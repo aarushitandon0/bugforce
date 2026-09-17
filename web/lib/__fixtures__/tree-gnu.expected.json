@@ -1,0 +1,47 @@
+[
+  {
+    "path": "challenge/pkg/__init__.py",
+    "size": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "challenge/pkg/retry.py",
+    "size": 31,
+    "sha256": "8fa32bcc454ad7def66de0a6bab9c86ecdcaf796092c1da84bedf434d3381e1d"
+  },
+  {
+    "path": "challenge/pkg/windows.py",
+    "size": 14,
+    "sha256": "5bfee2d980860c58e9fe987d5845afaef0c892b330fdffce44eaa775d78d8e95"
+  },
+  {
+    "path": "challenge/docs/na\u00efve-\u00fcnic\u00f8de.txt",
+    "size": 6,
+    "sha256": "7b49b9e063bd91a4f9252b413261f5557b9c570aa61516989499f64a62dbcdd6"
+  },
+  {
+    "path": "challenge/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/deeply/nested_module_with_a_long_name.py",
+    "size": 11,
+    "sha256": "09cbf5ae13a643a9b023da1035c60c5018731d5d9633a86d61b19b4e3f3aa7eb"
+  },
+  {
+    "path": "challenge/exact_block.bin",
+    "size": 512,
+    "sha256": "110009dcee21620b166f3abfecb5eff7a873be729d1c2d53822e7acc5f34eb9b"
+  },
+  {
+    "path": "challenge/one_over_block.txt",
+    "size": 513,
+    "sha256": "02425c0f5b0dabf3d2b9115f3f7723a02ad8bcfb1534a0d231614fd42b8188f6"
+  },
+  {
+    "path": "challenge/traceback.txt",
+    "size": 34,
+    "sha256": "d400956ba561cf2dba4031cf5d01009d5d2c3169182c69cbf4532ea792847987"
+  },
+  {
+    "path": "challenge/.git/HEAD",
+    "size": 21,
+    "sha256": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80"
+  }
+]

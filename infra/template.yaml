@@ -1,0 +1,585 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  BugForge Phase 4 -- mutation-generated debugging challenges.
+  One container image per vetted repo; seven lambdas; one Step Functions
+  workflow; two S3 prefixes with deliberately different IAM.
+
+Parameters:
+  ImageUri:
+    Type: String
+    Description: ECR image URI produced by infra/docker/build_and_push.sh
+  RepoName:
+    Type: String
+    Default: jd__tenacity
+  RepoUrl:
+    Type: String
+    Default: https://github.com/jd/tenacity
+  RepoPackage:
+    Type: String
+    Default: tenacity
+    Description: Import package coverage measures; must sit at the repo root.
+  RepoLicense:
+    Type: String
+    Default: Apache-2.0
+    Description: SPDX licence id of the target repo, shown on every challenge card.
+  WebOrigin:
+    Type: String
+    Default: "*"
+    Description: >
+      Origin allowed to call the API and fetch presigned trees (CORS). Set it to
+      the Amplify URL, e.g. https://main.d1234abcd.amplifyapp.com, once known.
+  DisableBedrock:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Set true to force the deterministic template describer (BUGFORGE_DISABLE_BEDROCK).
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-opus-5
+
+Globals:
+  Function:
+    # PackageType is not a Globals-supported property; it is set per function.
+    MemorySize: 2048
+    Architectures: [x86_64]
+    Environment:
+      Variables:
+        BUCKET: !Ref ArtifactBucket
+        REPO_DIR: /repo
+        REPO_NAME: !Ref RepoName
+        REPO_URL: !Ref RepoUrl
+        REPO_PACKAGE: !Ref RepoPackage
+        REPO_LICENSE: !Ref RepoLicense
+        TABLE_CHALLENGES: !Ref ChallengesTable
+        TABLE_SUBMISSIONS: !Ref SubmissionsTable
+        TABLE_GAPS: !Ref GapReportsTable
+        TABLE_LEADERBOARD: !Ref LeaderboardTable
+  HttpApi:
+    # The frontend is a static site on a different origin (Amplify).
+    CorsConfiguration:
+      AllowOrigins: [!Ref WebOrigin]
+      AllowMethods: [GET, POST, OPTIONS]
+      AllowHeaders: [content-type]
+      MaxAge: 600
+
+Resources:
+  # ---------------------------------------------------------------------------
+  # storage
+  # ---------------------------------------------------------------------------
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      # public/ means "learner-facing", never "world-readable": the only way
+      # to read it is a 10-minute presigned URL from the API.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # The solve screen fetches the presigned public tree straight from S3.
+      # GET only: CORS does not grant access, the presigned signature does,
+      # and the API role cannot sign for answers/{id}/ at all.
+      CorsConfiguration:
+        CorsRules:
+          - AllowedMethods: [GET]
+            AllowedOrigins: [!Ref WebOrigin]
+            AllowedHeaders: ["*"]
+            MaxAge: 3000
+
+  ChallengesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: challenge_id
+          AttributeType: S
+        - AttributeName: repo
+          AttributeType: S
+      KeySchema:
+        - AttributeName: challenge_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: repo_index
+          KeySchema:
+            - AttributeName: repo
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  SubmissionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: submission_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: submission_id
+          KeyType: HASH
+
+  GapReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: gap_id
+          AttributeType: S
+        - AttributeName: repo
+          AttributeType: S
+      KeySchema:
+        - AttributeName: gap_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: repo_index
+          KeySchema:
+            - AttributeName: repo
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  LeaderboardTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  # ---------------------------------------------------------------------------
+  # roles -- each function gets the narrowest set that lets it do its one job
+  # ---------------------------------------------------------------------------
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: work-prefix-only
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Pipeline intermediates only. No access to public/, and no
+              # access to the answer patches under answers/{id}/.
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/answers/_work/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ArtifactBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: ["answers/_work/*"]
+
+  DescribeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: work-prefix-and-bedrock
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/answers/_work/*"
+              # The one exception to "S3 prefixes and nothing else", and only
+              # for the function that writes prose.
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"
+
+  PersistRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: write-both-prefixes
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject]
+                Resource: !Sub "${ArtifactBucket.Arn}/answers/*"
+              # Write-only on the learner-facing prefix: this function has no
+              # reason to read a bundle back.
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub "${ArtifactBucket.Arn}/public/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ArtifactBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: ["answers/_work/*"]
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource:
+                  - !GetAtt ChallengesTable.Arn
+                  - !GetAtt GapReportsTable.Arn
+
+  GradeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: public-prefix-and-submissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Grading needs the broken tree and nothing else. It has no read
+              # access to answers/ at all -- the suite is the oracle, so there
+              # is no answer key to consult.
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${ArtifactBucket.Arn}/public/*"
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:PutItem]
+                Resource: !GetAtt SubmissionsTable.Arn
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt ChallengesTable.Arn
+              - Effect: Allow
+                Action: dynamodb:UpdateItem
+                Resource: !GetAtt LeaderboardTable.Arn
+
+  RevealRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: answers-read-after-pass
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # The one role besides fn_persist that touches answers/. It
+              # returns content only for a PASS submission and never presigns.
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${ArtifactBucket.Arn}/answers/*"
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource:
+                  - !GetAtt SubmissionsTable.Arn
+                  - !GetAtt ChallengesTable.Arn
+
+  ApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: read-public-and-tables
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # A presigned URL carries the signer's permissions, so this is
+              # the exact boundary that stops a browser ever reaching an
+              # answer patch: the API role cannot read answers/{id}/ at all.
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${ArtifactBucket.Arn}/public/*"
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub "${ArtifactBucket.Arn}/answers/_work/*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !GetAtt ArtifactBucket.Arn
+                Condition:
+                  StringLike:
+                    s3:prefix: ["answers/_work/*"]
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:Scan]
+                Resource:
+                  - !GetAtt ChallengesTable.Arn
+                  - !Sub "${ChallengesTable.Arn}/index/*"
+                  - !GetAtt GapReportsTable.Arn
+                  - !Sub "${GapReportsTable.Arn}/index/*"
+                  - !GetAtt SubmissionsTable.Arn
+                  - !GetAtt LeaderboardTable.Arn
+              - Effect: Allow
+                Action: dynamodb:PutItem
+                Resource: !GetAtt SubmissionsTable.Arn
+              - Effect: Allow
+                Action: [states:StartExecution, states:DescribeExecution]
+                Resource:
+                  - !Ref ForgeStateMachine
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${ForgeStateMachine.Name}:*"
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt GradeFunction.Arn
+                  - !GetAtt RevealFunction.Arn
+
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: states.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: invoke-pipeline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !GetAtt BaselineFunction.Arn
+                  - !GetAtt GenerateFunction.Arn
+                  - !GetAtt RunBatchFunction.Arn
+                  - !GetAtt ScoreFunction.Arn
+                  - !GetAtt DescribeFunction.Arn
+                  - !GetAtt PersistFunction.Arn
+              # A distributed Map runs its iterations as child executions of
+              # this same state machine, so it needs to start and watch itself.
+              - Effect: Allow
+                Action: [states:StartExecution, states:DescribeExecution, states:StopExecution]
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:stateMachine:${AWS::StackName}-forge"
+                  - !Sub "arn:${AWS::Partition}:states:${AWS::Region}:${AWS::AccountId}:execution:${AWS::StackName}-forge/*"
+
+  # ---------------------------------------------------------------------------
+  # pipeline functions -- one image, seven CMD overrides
+  # ---------------------------------------------------------------------------
+  BaselineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_baseline.handler]
+      Role: !GetAtt PipelineRole.Arn
+      Timeout: 300
+      EphemeralStorage: {Size: 2048}
+
+  GenerateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_generate.handler]
+      Role: !GetAtt PipelineRole.Arn
+      Timeout: 300
+      EphemeralStorage: {Size: 2048}
+
+  RunBatchFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_run_batch.handler]
+      Role: !GetAtt PipelineRole.Arn
+      Timeout: 300
+      EphemeralStorage: {Size: 2048}
+
+  ScoreFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_score.handler]
+      Role: !GetAtt PipelineRole.Arn
+      Timeout: 300
+      EphemeralStorage: {Size: 2048}
+
+  DescribeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_describe.handler]
+      Role: !GetAtt DescribeRole.Arn
+      Timeout: 300
+      Environment:
+        Variables:
+          BUGFORGE_DISABLE_BEDROCK: !Ref DisableBedrock
+          BEDROCK_MODEL_ID: !Ref BedrockModelId
+
+  PersistFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_persist.handler]
+      Role: !GetAtt PersistRole.Arn
+      Timeout: 300
+      EphemeralStorage: {Size: 2048}
+
+  GradeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_grade.handler]
+      Role: !GetAtt GradeRole.Arn
+      Timeout: 60
+      EphemeralStorage: {Size: 2048}
+
+  RevealFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_reveal.handler]
+      Role: !GetAtt RevealRole.Arn
+      Timeout: 10
+      MemorySize: 512
+
+  # ---------------------------------------------------------------------------
+  # workflow
+  # ---------------------------------------------------------------------------
+  ForgeStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "${AWS::StackName}-forge"
+      Type: STANDARD
+      DefinitionUri: statemachine/forge_repo.asl.json
+      Role: !GetAtt StateMachineRole.Arn
+      DefinitionSubstitutions:
+        BaselineFunctionArn: !GetAtt BaselineFunction.Arn
+        GenerateFunctionArn: !GetAtt GenerateFunction.Arn
+        RunBatchFunctionArn: !GetAtt RunBatchFunction.Arn
+        ScoreFunctionArn: !GetAtt ScoreFunction.Arn
+        DescribeFunctionArn: !GetAtt DescribeFunction.Arn
+        PersistFunctionArn: !GetAtt PersistFunction.Arn
+
+  # ---------------------------------------------------------------------------
+  # http api
+  # ---------------------------------------------------------------------------
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref ImageUri
+      ImageConfig:
+        Command: [cloud.handlers.fn_api.handler]
+      Role: !GetAtt ApiRole.Arn
+      Timeout: 29
+      MemorySize: 512
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref ForgeStateMachine
+          GRADE_FUNCTION_ARN: !GetAtt GradeFunction.Arn
+          REVEAL_FUNCTION_ARN: !GetAtt RevealFunction.Arn
+      Events:
+        PostForge:
+          Type: HttpApi
+          Properties:
+            Path: /forge
+            Method: POST
+        GetForge:
+          Type: HttpApi
+          Properties:
+            Path: /forge/{execution_id}
+            Method: GET
+        GetRepos:
+          Type: HttpApi
+          Properties:
+            Path: /repos
+            Method: GET
+        GetChallenges:
+          Type: HttpApi
+          Properties:
+            Path: /challenges
+            Method: GET
+        GetChallenge:
+          Type: HttpApi
+          Properties:
+            Path: /challenges/{challenge_id}
+            Method: GET
+        GetChallengeTree:
+          Type: HttpApi
+          Properties:
+            Path: /challenges/{challenge_id}/tree
+            Method: GET
+        PostSubmission:
+          Type: HttpApi
+          Properties:
+            Path: /submissions
+            Method: POST
+        GetSubmission:
+          Type: HttpApi
+          Properties:
+            Path: /submissions/{submission_id}
+            Method: GET
+        GetReveal:
+          Type: HttpApi
+          Properties:
+            Path: /submissions/{submission_id}/reveal
+            Method: GET
+        GetGaps:
+          Type: HttpApi
+          Properties:
+            Path: /gaps
+            Method: GET
+
+Outputs:
+  ApiUrl:
+    Description: Base URL for the BugForge API
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  BucketName:
+    Value: !Ref ArtifactBucket
+  StateMachineArn:
+    Value: !Ref ForgeStateMachine
+  ChallengesTableName:
+    Value: !Ref ChallengesTable

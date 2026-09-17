@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L260",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/retry.py",
+  "lineno": 260,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/retry.py\n+++ b/tenacity/retry.py\n@@ -257,7 +257,7 @@\n         if self.message is not None:\n             return self.message == str(exception)\n         assert self.match is not None\n-        return bool(self.match.match(str(exception)))\n+        return None\n \n \n class retry_if_not_exception_message(retry_if_exception_message):\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestDecoratorWrapper::test_retry_if_exception_message_match"
+  ],
+  "difficulty_score": 7.2723360655737705,
+  "title": "Return in retry",
+  "description": "test_retry_if_exception_message_match raised AssertionError."
+}

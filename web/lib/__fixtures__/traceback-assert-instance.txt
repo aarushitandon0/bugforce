@@ -1,0 +1,13 @@
+self = <tests.test_tenacity.TestRetryConditions testMethod=test_retry_and_coalesces>
+
+    def test_retry_and_coalesces(self) -> None:
+        """Multiple & operations flatten into a single retry_all."""
+        a = tenacity.retry_if_result(lambda x: x == 1)
+        b = tenacity.retry_if_result(lambda x: x > 0)
+        c = tenacity.retry_if_result(lambda x: x < 10)
+    
+        combined = a & b & c
+>       self.assertIsInstance(combined, retry_all)
+E       AssertionError: None is not an instance of <class 'tenacity.retry.retry_all'>
+
+tests\test_tenacity.py:901: AssertionError

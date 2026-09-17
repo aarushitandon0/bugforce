@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L45",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/retry.py",
+  "lineno": 45,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/retry.py\n+++ b/tenacity/retry.py\n@@ -42,7 +42,7 @@\n     def __rand__(self, other: \"RetryBaseT\") -> \"retry_all\":\n         # Flatten if other is already a retry_all\n         if isinstance(other, retry_all):\n-            return retry_all(*other.retries, self)\n+            return None\n         return retry_all(other, self)\n \n     def __or__(self, other: \"RetryBaseT\") -> \"retry_any\":\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestRetryConditions::test_retry_and_coalesces"
+  ],
+  "difficulty_score": 7.2723360655737705,
+  "title": "Return in retry",
+  "description": "test_retry_and_coalesces expected an instance of retry_all, got None."
+}

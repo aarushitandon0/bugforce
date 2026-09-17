@@ -1,0 +1,16 @@
+{
+  "id": "jd__tenacity-3e58094d3b-stop-L64",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/stop.py",
+  "lineno": 64,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/stop.py\n+++ b/tenacity/stop.py\n@@ -61,7 +61,7 @@\n \n     @override\n     def __call__(self, retry_state: \"RetryCallState\") -> bool:\n-        return all(x(retry_state) for x in self.stops)\n+        return None\n \n \n class _stop_never(stop_base):\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestStopConditions::test_stop_all",
+    "tests/test_tenacity.py::TestStopConditions::test_stop_and"
+  ],
+  "difficulty_score": 6.682172131147541,
+  "title": "Return in stop",
+  "description": "test_stop_all expected True, got None."
+}

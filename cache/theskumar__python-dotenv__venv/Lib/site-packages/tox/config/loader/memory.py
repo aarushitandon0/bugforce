@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from tox.config.types import Command, EnvList
+
+from .api import Loader
+from .section import Section
+from .str_convert import StrConvert
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from tox.config.main import Config
+
+
+class MemoryLoader(Loader[object]):
+    """Loads configuration directly from data in memory."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(Section(prefix="<memory>", name=str(id(self))), [])
+        self.raw: dict[str, Any] = {**kwargs}
+
+    def load_raw(self, key: str, conf: Config | None, env_name: str | None) -> object:  # ruff:ignore[unused-method-argument]
+        return self.raw[key]
+
+    def found_keys(self) -> set[str]:
+        return set(self.raw.keys())
+
+    @staticmethod
+    def to_bool(value: Any) -> bool:
+        return bool(value)
+
+    @staticmethod
+    def to_str(value: Any) -> str:
+        return str(value)
+
+    @staticmethod
+    def to_list(value: Any, of_type: type[Any]) -> Iterator[Any]:  # ruff:ignore[unused-static-method-argument]
+        return iter(value)
+
+    @staticmethod
+    def to_set(value: Any, of_type: type[Any]) -> Iterator[Any]:  # ruff:ignore[unused-static-method-argument]
+        return iter(value)
+
+    @staticmethod
+    def to_dict(value: Any, of_type: tuple[type[Any], type[Any]]) -> Iterator[tuple[Any, Any]]:  # ruff:ignore[unused-static-method-argument]
+        return iter(value.items())
+
+    @staticmethod
+    def to_path(value: Any) -> Path:
+        return Path(value)
+
+    @staticmethod
+    def to_command(value: Any) -> Command:
+        if isinstance(value, Command):
+            return value
+        if isinstance(value, str):
+            return StrConvert.to_command(value)
+        msg = f"command expected Command or str, got {type(value).__name__}: {value!r}"
+        raise TypeError(msg)
+
+    @staticmethod
+    def to_env_list(value: Any) -> EnvList:
+        if isinstance(value, EnvList):
+            return value
+        if isinstance(value, str):
+            return StrConvert.to_env_list(value)
+        msg = f"env_list expected EnvList or str, got {type(value).__name__}: {value!r}"
+        raise TypeError(msg)

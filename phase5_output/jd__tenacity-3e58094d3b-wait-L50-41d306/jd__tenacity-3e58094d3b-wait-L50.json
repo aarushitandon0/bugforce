@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-wait-L50",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/wait.py",
+  "lineno": 50,
+  "mutator_name": "BOUNDARY",
+  "diff": "--- a/tenacity/wait.py\n+++ b/tenacity/wait.py\n@@ -47,7 +47,7 @@\n             # identity so summing a list of strategies works. Any other number\n             # is not a wait strategy, and saying so here raises TypeError at\n             # the `+` rather than building a combination that fails when called.\n-            if other == 0:\n+            if other == -1:\n                 return self\n             return NotImplemented\n         # A plain callable -- `WaitBaseT` admits those, and a function has no\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestWaitConditions::test_wait_arbitrary_sum"
+  ],
+  "difficulty_score": 7.2723360655737705,
+  "title": "Boundary in wait",
+  "description": "test_wait_arbitrary_sum raised TypeError."
+}

@@ -1,0 +1,12 @@
+{
+  "_comment": "The only repos an image may be built for. Dependencies from anything not listed here are never installed. Each entry pins a commit: a moving branch would silently change every challenge's line numbers. Root-layout packages only -- see the src/ check in the Dockerfile.",
+  "repos": [
+    {
+      "name": "jd__tenacity",
+      "url": "https://github.com/jd/tenacity",
+      "sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+      "package": "tenacity",
+      "extras": "test"
+    }
+  ]
+}

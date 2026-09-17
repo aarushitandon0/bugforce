@@ -1,0 +1,160 @@
+self = <tests.test_asyncio.TestContextManager testMethod=test_retry_with_async_exc>
+
+    @asynctest
+    async def test_retry_with_async_exc(self) -> None:
+        async def test() -> int:
+            attempts = 0
+    
+            class CustomException(Exception):
+                pass
+    
+            async def is_exc(e: BaseException) -> bool:
+                return isinstance(e, CustomException)
+    
+            async for attempt in tasyncio.AsyncRetrying(
+                retry=tasyncio.retry_if_exception(is_exc)
+            ):
+                with attempt:
+                    attempts += 1
+                    if attempts < 3:
+                        raise CustomException
+    
+                assert attempt.retry_state.outcome  # help mypy
+                if not attempt.retry_state.outcome.failed:
+                    attempt.retry_state.set_result(attempts)
+    
+            return attempts
+    
+>       result = await test()
+                 ^^^^^^^^^^^^
+
+tests\test_asyncio.py:450: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def test() -> int:
+        attempts = 0
+    
+        class CustomException(Exception):
+            pass
+    
+        async def is_exc(e: BaseException) -> bool:
+            return isinstance(e, CustomException)
+    
+>       async for attempt in tasyncio.AsyncRetrying(
+            retry=tasyncio.retry_if_exception(is_exc)
+        ):
+
+tests\test_asyncio.py:436: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <AsyncRetrying object at 0x22321dfa410 (stop=<tenacity.stop._stop_never object at 0x0000022321B06BA0>, wait=<tenacity....fore=<function before_nothing at 0x0000022321B32820>, after=<function after_nothing at 0x0000022321B310C0>, name=None)>
+
+    async def __anext__(self) -> AttemptManager:
+        if not self.enabled:
+            if self._disabled_iter_done:
+                outcome = self._retry_state.outcome
+                if outcome is not None and outcome.failed:
+                    raise outcome.exception()  # type: ignore[misc]
+                raise StopAsyncIteration
+            self._disabled_iter_done = True
+            return AttemptManager(retry_state=self._retry_state)
+    
+        while True:
+>           do = await self.iter(retry_state=self._retry_state)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tenacity\asyncio\__init__.py:204: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <AsyncRetrying object at 0x22321dfa410 (stop=<tenacity.stop._stop_never object at 0x0000022321B06BA0>, wait=<tenacity....fore=<function before_nothing at 0x0000022321B32820>, after=<function after_nothing at 0x0000022321B310C0>, name=None)>
+retry_state = <RetryCallState 2349915258416: attempt #1; slept for 0.0; last result: failed (CustomException )>
+
+    @override
+    async def iter(self, retry_state: "RetryCallState") -> DoAttempt | DoSleep | t.Any:
+        self._begin_iter(retry_state)
+        result = None
+        for action in self.iter_state.actions:
+>           result = await action(retry_state)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tenacity\asyncio\__init__.py:176: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+args = (<RetryCallState 2349915258416: attempt #1; slept for 0.0; last result: failed (CustomException )>,)
+kwargs = {}
+
+    async def inner(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+>       return call(*args, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^
+
+tenacity\_utils.py:130: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+rs = <RetryCallState 2349915258416: attempt #1; slept for 0.0; last result: failed (CustomException )>
+
+>   self._add_action_func(lambda rs: rs.outcome.result())
+                                     ^^^^^^^^^^^^^^^^^^^
+
+tenacity\__init__.py:460: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = None, timeout = None
+
+    def result(self, timeout=None):
+        """Return the result of the call that the future represents.
+    
+        Args:
+            timeout: The number of seconds to wait for the result if the
+                future isn't done.  If None, then there is no limit on the
+                wait time.
+    
+        Returns:
+            The result of the call that the future represents.
+    
+        Raises:
+            CancelledError: If the future was cancelled.
+            TimeoutError: If the future didn't finish executing before the
+                given timeout.
+            Exception: If the call raised then that exception will be
+                raised.
+        """
+        try:
+            with self._condition:
+                if self._state in [CANCELLED, CANCELLED_AND_NOTIFIED]:
+                    raise CancelledError()
+                elif self._state == FINISHED:
+>                   return self.__get_result()
+                           ^^^^^^^^^^^^^^^^^^^
+
+..\..\..\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py:447: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = None
+
+    def __get_result(self):
+        if self._exception is not None:
+            try:
+>               raise self._exception
+
+..\..\..\Python\pythoncore-3.14-64\Lib\concurrent\futures\_base.py:396: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+    async def test() -> int:
+        attempts = 0
+    
+        class CustomException(Exception):
+            pass
+    
+        async def is_exc(e: BaseException) -> bool:
+            return isinstance(e, CustomException)
+    
+        async for attempt in tasyncio.AsyncRetrying(
+            retry=tasyncio.retry_if_exception(is_exc)
+        ):
+            with attempt:
+                attempts += 1
+                if attempts < 3:
+>                   raise CustomException
+E                   tests.test_asyncio.TestContextManager.test_retry_with_async_exc.<locals>.test.<locals>.CustomException
+
+tests\test_asyncio.py:442: CustomException

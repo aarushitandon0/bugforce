@@ -1,0 +1,203 @@
+{
+  "Comment": "BugForge: mutate a vetted repo into debugging challenges. baseline -> generate -> Map(batches of 15) -> score -> describe -> persist.",
+  "StartAt": "Baseline",
+  "States": {
+    "Baseline": {
+      "Type": "Task",
+      "Comment": "Full suite once, with per-test coverage contexts, to build the line -> tests map.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${BaselineFunctionArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Generate"
+    },
+
+    "Generate": {
+      "Type": "Task",
+      "Comment": "AST candidates, restricted to lines the baseline says at least one test covers.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${GenerateFunctionArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "AnyCandidates"
+    },
+
+    "AnyCandidates": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.batch_count",
+          "NumericGreaterThan": 0,
+          "Next": "RunBatches"
+        }
+      ],
+      "Default": "NoCandidates"
+    },
+
+    "NoCandidates": {
+      "Type": "Fail",
+      "Error": "NoCandidates",
+      "Cause": "No mutation candidates were found on any covered line."
+    },
+
+    "RunBatches": {
+      "Type": "Map",
+      "Comment": "ToleratedFailurePercentage is 90 ON PURPOSE -- it is not a bug and not a workaround. fn_run_batch raises when none of its 15 mutations survived the targeted test run, and that is the COMMON case: most mutations are test gaps or drops, so most batches legitimately 'fail'. No data is lost when a branch fails, because every batch writes its full per-mutation results to S3 before deciding whether to raise; fn_score and fn_persist read that prefix directly. Lower this number and a healthy run will abort itself.",
+      "ItemsPath": "$.batches",
+      "MaxConcurrency": 10,
+      "ToleratedFailurePercentage": 90,
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "DISTRIBUTED",
+          "ExecutionType": "STANDARD"
+        },
+        "StartAt": "RunBatch",
+        "States": {
+          "RunBatch": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "${RunBatchFunctionArn}",
+              "Payload.$": "$"
+            },
+            "OutputPath": "$.Payload",
+            "Retry": [
+              {
+                "Comment": "Transient Lambda-side failures only. NoSurvivorsError is never retried -- it is the expected outcome, not a fault.",
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException",
+                  "Lambda.TooManyRequestsException"
+                ],
+                "IntervalSeconds": 5,
+                "MaxAttempts": 2,
+                "BackoffRate": 2
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.map_results",
+      "Next": "Score"
+    },
+
+    "Score": {
+      "Type": "Task",
+      "Comment": "Full-suite pass, traceback capture, and difficulty scoring for each survivor. Loops back into itself while work remains -- one lambda cannot hold thirty full-suite runs inside 300s.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${ScoreFunctionArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "ScoringComplete"
+    },
+
+    "ScoringComplete": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.done",
+          "BooleanEquals": false,
+          "Next": "Score"
+        }
+      ],
+      "Default": "Describe"
+    },
+
+    "Describe": {
+      "Type": "Task",
+      "Comment": "The only model call in the system: a title and two sentences, with a deterministic template fallback.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${DescribeFunctionArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "Persist"
+    },
+
+    "Persist": {
+      "Type": "Task",
+      "Comment": "Public bundles, answer patches into the separate prefix, challenge rows, and the maintainer gap report.",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${PersistFunctionArn}",
+        "Payload.$": "$"
+      },
+      "OutputPath": "$.Payload",
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException",
+            "Lambda.TooManyRequestsException"
+          ],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 2,
+          "BackoffRate": 2
+        }
+      ],
+      "End": true
+    }
+  }
+}

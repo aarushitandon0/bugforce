@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/*
+ * The design system, enforced at the token level: the default colour, font,
+ * radius and shadow scales are removed outright, so a rounded corner, a
+ * shadow, a sans-serif face or an off-palette colour cannot be written with a
+ * utility class at all.
+ */
+@theme {
+  --color-*: initial;
+  --color-base: #0a0b0d;
+  --color-panel: #111316;
+  --color-line: #1e2126;
+  --color-text: #c9cdd3;
+  --color-dim: #6b7280;
+  --color-error: #e8a33d;
+  --color-success: #4ade80;
+  --color-causal: #8b5cf6;
+
+  --font-*: initial;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+  --blur-*: initial;
+  --backdrop-blur-*: initial;
+
+  --animate-fade: fade 120ms linear both;
+  --animate-blink: blink 1.06s steps(1, end) infinite;
+
+  @keyframes fade {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes blink {
+    0%,
+    50% {
+      opacity: 1;
+    }
+    50.01%,
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    background: var(--color-base);
+  }
+
+  body {
+    background: var(--color-base);
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    font-variant-ligatures: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-line);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  input,
+  button,
+  textarea,
+  select {
+    font-family: inherit;
+    border-radius: 0;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-causal) 40%, transparent);
+    color: var(--color-text);
+  }
+
+  :focus-visible {
+    outline: 1px solid var(--color-text);
+    outline-offset: 1px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line) transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+    .animate-blink {
+      animation: none !important;
+    }
+  }
+}
+
+@layer components {
+  /* small uppercase section label */
+  .label {
+    font-size: 11px;
+    line-height: 1.4;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-dim);
+  }
+
+  .kbd {
+    display: inline-block;
+    padding: 0 4px;
+    border: 1px solid var(--color-line);
+    color: var(--color-text);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .link {
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-line);
+    transition: border-color 120ms linear;
+  }
+  .link:hover {
+    border-color: var(--color-text);
+  }
+}

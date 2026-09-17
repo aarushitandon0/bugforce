@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L134",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/retry.py",
+  "lineno": 134,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/retry.py\n+++ b/tenacity/retry.py\n@@ -131,7 +131,7 @@\n         super().__init__(self._check)\n \n     def _check(self, e: BaseException) -> bool:\n-        return not isinstance(e, self.exception_types)\n+        return None\n \n \n class retry_unless_exception_type(retry_if_exception):\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestDecoratorWrapper::test_retry_except_exception_of_type"
+  ],
+  "difficulty_score": 7.2723360655737705,
+  "title": "Return in retry",
+  "description": "test_retry_except_exception_of_type raised NameError."
+}

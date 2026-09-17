@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L194",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/retry.py",
+  "lineno": 194,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/retry.py\n+++ b/tenacity/retry.py\n@@ -191,7 +191,7 @@\n             while exc is not None and id(exc) not in seen:\n                 seen.add(id(exc))\n                 if isinstance(exc.__cause__, self.exception_cause_types):\n-                    return True\n+                    return False\n                 exc = exc.__cause__\n \n         return False\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestDecoratorWrapper::test_retry_if_exception_cause_type"
+  ],
+  "difficulty_score": 7.2723360655737705,
+  "title": "Return in retry",
+  "description": "test_retry_if_exception_cause_type raised OSError."
+}

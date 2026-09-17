@@ -1,0 +1,14 @@
+# The image only needs the two source packages; everything else here is
+# local working state, and cache/ alone is several gigabytes of cloned repos
+# and virtualenvs.
+cache/
+.baseline_cache/
+phase3_output/
+.pytest_cache/
+.git/
+.claude/
+**/__pycache__/
+**/*.pyc
+infra/
+scripts/
+tests/

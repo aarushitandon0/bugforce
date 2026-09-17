@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L227",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/retry.py",
+  "lineno": 227,
+  "mutator_name": "NEGATION",
+  "diff": "--- a/tenacity/retry.py\n+++ b/tenacity/retry.py\n@@ -224,7 +224,7 @@\n         if retry_state.outcome is None:\n             raise RuntimeError(\"__call__() called before outcome was set\")\n \n-        if not retry_state.outcome.failed:\n+        if retry_state.outcome.failed:\n             return not self.predicate(retry_state.outcome.result())\n         return False\n \n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestRetryConditions::test_retry_if_not_result"
+  ],
+  "difficulty_score": 7.2723360655737705,
+  "title": "Negation in retry",
+  "description": "test_retry_if_not_result expected True, got False."
+}
