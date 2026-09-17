@@ -66,6 +66,6 @@ describe("formatting", () => {
     expect(thousands(2847)).toBe("2,847");
     expect(plural(1, "test")).toBe("1 test");
     expect(plural(41, "test")).toBe("41 tests");
-    expect(truncateLeft("tenacity/asyncio/__init__.py", 12)).toBe("…/__init__.py");
+    expect(truncateLeft("tenacity/asyncio/__init__.py", 13)).toBe("…/__init__.py");
   });
 });

@@ -1,0 +1,22 @@
+version: 1
+applications:
+  - appRoot: web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            # NEXT_PUBLIC_API_URL must be set in the Amplify app's environment
+            # variables to the stack's ApiUrl output; it is inlined at build time.
+            - test -n "$NEXT_PUBLIC_API_URL"
+            - npm test
+            - npm run build
+      artifacts:
+        baseDirectory: out
+        files:
+          - "**/*"
+      cache:
+        paths:
+          - node_modules/**/*

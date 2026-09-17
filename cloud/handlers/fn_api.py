@@ -431,6 +431,33 @@ def get_gaps(params: dict) -> dict:
 # submissions
 # ---------------------------------------------------------------------------
 
+MAX_VISITS = 300
+MAX_VISIT_PATH = 200
+
+
+def sanitize_investigation(raw) -> list[dict]:
+    """The learner's file-open log: [{path, at}], at = epoch ms.
+
+    Untrusted display data -- it is replayed on the result screen and never
+    influences grading -- so it is length-capped and stripped of anything that
+    isn't a plausible path and timestamp.
+    """
+    if not isinstance(raw, list):
+        return []
+    visits = []
+    for entry in raw[:MAX_VISITS]:
+        if not isinstance(entry, dict):
+            continue
+        path = entry.get("path")
+        at = entry.get("at")
+        if not isinstance(path, str) or not path or len(path) > MAX_VISIT_PATH:
+            continue
+        if isinstance(at, bool) or not isinstance(at, (int, float)):
+            continue
+        visits.append({"path": path, "at": int(at)})
+    return sorted(visits, key=lambda v: v["at"])
+
+
 def post_submission(event: dict) -> dict:
     body = _body(event)
     challenge_id = body.get("challenge_id")
@@ -441,16 +468,19 @@ def post_submission(event: dict) -> dict:
         return _response(404, {"error": "no such challenge"})
 
     submission_id = f"sub-{uuid.uuid4().hex[:12]}"
-    ddb_io.put(
-        config.table("submissions"),
-        {
-            "submission_id": submission_id,
-            "challenge_id": challenge_id,
-            "user_id": body.get("user_id") or "anonymous",
-            "status": "PENDING",
-            "created_at": int(time.time()),
-        },
-    )
+    item = {
+        "submission_id": submission_id,
+        "challenge_id": challenge_id,
+        "user_id": body.get("user_id") or "anonymous",
+        "status": "PENDING",
+        "created_at": int(time.time()),
+    }
+    # fn_grade merges its verdict into this item, so the log survives grading
+    # and comes back from GET /submissions/{id} for the replay.
+    investigation = sanitize_investigation(body.get("investigation"))
+    if investigation:
+        item["investigation"] = investigation
+    ddb_io.put(config.table("submissions"), item)
 
     # Grading runs for as long as the suite takes; the client polls.
     lambda_client().invoke(

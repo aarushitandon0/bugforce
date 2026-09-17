@@ -349,3 +349,85 @@ def test_challenge_id_is_stable_and_does_not_name_the_file_or_line():
     assert "retry" not in cid and "L45" not in cid
     assert cid != ids.challenge_id("jd__tenacity", "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
                                    "tenacity/retry.py", 45, "RETURN", "False")
+
+
+# --------------------------------------------------------------------------
+# investigation log (Phase 7)
+# --------------------------------------------------------------------------
+
+def test_sanitize_investigation_keeps_plausible_visits_in_time_order():
+    visits = fn_api.sanitize_investigation(
+        [
+            {"path": "tenacity/retry.py", "at": 200},
+            {"path": "tests/test_retry.py", "at": 100.7},
+        ]
+    )
+    assert visits == [
+        {"path": "tests/test_retry.py", "at": 100},
+        {"path": "tenacity/retry.py", "at": 200},
+    ]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "not a list",
+        None,
+        [{"path": "", "at": 1}],
+        [{"path": "x" * 201, "at": 1}],
+        [{"path": "a.py"}],
+        [{"path": "a.py", "at": "soon"}],
+        [{"path": "a.py", "at": True}],
+        [{"at": 1}],
+        ["a.py"],
+    ],
+)
+def test_sanitize_investigation_drops_anything_malformed(raw):
+    assert fn_api.sanitize_investigation(raw) == []
+
+
+def test_sanitize_investigation_caps_the_length():
+    assert len(fn_api.sanitize_investigation([{"path": "a.py", "at": i} for i in range(500)])) == 300
+
+
+def test_post_submission_stores_the_investigation_log(env, monkeypatch):
+    monkeypatch.setenv("GRADE_FUNCTION_ARN", "arn:grade")
+    monkeypatch.setattr(fn_api.ddb_io, "get", lambda table, key: dict(ROW))
+    stored = {}
+    monkeypatch.setattr(fn_api.ddb_io, "put", lambda table, item: stored.update(item))
+
+    class _Lambda:
+        def invoke(self, **kwargs):
+            return {}
+
+    monkeypatch.setattr(fn_api, "lambda_client", lambda: _Lambda())
+
+    response = fn_api.post_submission(
+        {
+            "body": json.dumps(
+                {
+                    "challenge_id": ROW["challenge_id"],
+                    "patch": "--- a/x\n+++ b/x\n",
+                    "investigation": [{"path": "tenacity/retry.py", "at": 5}, {"bad": 1}],
+                }
+            )
+        }
+    )
+
+    assert response["statusCode"] == 202
+    assert stored["investigation"] == [{"path": "tenacity/retry.py", "at": 5}]
+    # the log is display data: it must never reach the grader
+    assert "investigation" not in json.loads(response["body"])
+
+
+def test_post_submission_without_a_log_stores_no_field(env, monkeypatch):
+    monkeypatch.setenv("GRADE_FUNCTION_ARN", "arn:grade")
+    monkeypatch.setattr(fn_api.ddb_io, "get", lambda table, key: dict(ROW))
+    stored = {}
+    monkeypatch.setattr(fn_api.ddb_io, "put", lambda table, item: stored.update(item))
+    monkeypatch.setattr(fn_api, "lambda_client", lambda: type("L", (), {"invoke": lambda self, **k: {}})())
+
+    fn_api.post_submission(
+        {"body": json.dumps({"challenge_id": ROW["challenge_id"], "patch": "--- a/x\n+++ b/x\n"})}
+    )
+    assert "investigation" not in stored

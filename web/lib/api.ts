@@ -5,6 +5,8 @@
  * two POSTs carry content-type and trigger a preflight.
  */
 
+import type { Visit } from "./replay";
+
 const BASE = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/+$/, "");
 
 export const apiConfigured = BASE !== "";
@@ -197,6 +199,8 @@ export interface Submission {
   detail?: string;
   failing_tests?: string[];
   tests_passed?: number;
+  /** the file-open log sent with the submission, replayed on the result screen */
+  investigation?: Visit[];
 }
 
 export interface Reveal {
@@ -221,7 +225,11 @@ export interface Reveal {
   github_url: string;
 }
 
-export const submitPatch = (challengeId: string, patch: string) =>
-  post<{ submission_id: string; status: "PENDING" }>("/submissions", { challenge_id: challengeId, patch });
+export const submitPatch = (challengeId: string, patch: string, investigation: Visit[] = []) =>
+  post<{ submission_id: string; status: "PENDING" }>("/submissions", {
+    challenge_id: challengeId,
+    patch,
+    investigation,
+  });
 export const getSubmission = (id: string) => request<Submission>(`/submissions/${encodeURIComponent(id)}`);
 export const getReveal = (id: string) => request<Reveal>(`/submissions/${encodeURIComponent(id)}/reveal`);
