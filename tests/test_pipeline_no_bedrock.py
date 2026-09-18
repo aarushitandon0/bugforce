@@ -148,7 +148,7 @@ def test_full_pipeline_runs_clean_with_bedrock_disabled(tmp_path, monkeypatch):
             comparison[0].site, PRICING, comparison[0].representative_test, comparison[0].traceback
         )
     )
-    assert copy.title == "Comparison in pricing"
+    assert copy.title == "Comparison in unit_price"
     assert copy.description == "test_bulk_order_is_discounted expected 80, got 100."
 
     assert model_calls == []

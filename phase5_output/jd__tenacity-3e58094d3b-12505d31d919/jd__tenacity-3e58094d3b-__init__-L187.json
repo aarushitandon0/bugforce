@@ -1,0 +1,17 @@
+{
+  "id": "jd__tenacity-3e58094d3b-__init__-L187",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/asyncio/__init__.py",
+  "lineno": 187,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/asyncio/__init__.py\n+++ b/tenacity/asyncio/__init__.py\n@@ -184,7 +184,7 @@\n         if not self.enabled:\n             self._retry_state = RetryCallState(self, fn=None, args=(), kwargs={})\n             self._disabled_iter_done = False\n-            return self\n+            return None\n \n         self.begin()\n         self._retry_state = RetryCallState(self, fn=None, args=(), kwargs={})\n",
+  "failing_tests": [
+    "tests/test_asyncio.py::TestAsyncEnabled::test_enabled_false_aiter_raises_original_exception",
+    "tests/test_asyncio.py::TestAsyncEnabled::test_enabled_false_aiter_succeeds_on_first_attempt",
+    "tests/test_asyncio.py::TestContextManager::test_sleeps"
+  ],
+  "difficulty_score": 5.204508196721312,
+  "title": "Return in AsyncRetrying:187",
+  "description": "test_enabled_false_aiter_raises_original_exception raised TypeError."
+}

@@ -1,0 +1,16 @@
+{
+  "id": "jd__tenacity-3e58094d3b-__init__-L542",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/__init__.py",
+  "lineno": 542,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/__init__.py\n+++ b/tenacity/__init__.py\n@@ -539,7 +539,7 @@\n         **kwargs: t.Any,\n     ) -> WrappedFnReturnT:\n         if not self.enabled:\n-            return fn(*args, **kwargs)\n+            return None\n \n         self.begin()\n \n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestEnabled::test_enabled_false_call_raises_original_exception",
+    "tests/test_tenacity.py::TestEnabled::test_enabled_false_call_succeeds_on_first_attempt"
+  ],
+  "difficulty_score": 5.682172131147541,
+  "title": "Return in Retrying",
+  "description": "test_enabled_false_call_raises_original_exception expected ValueError to be raised, got no exception."
+}

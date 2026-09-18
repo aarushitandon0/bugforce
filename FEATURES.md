@@ -122,7 +122,16 @@ preserved in the tree.
   `pip install`ed at runtime. Currently vetted: `jd/tenacity` @ `3e58094d`.
 - **Anti-cheat** (`cloud/anti_cheat.py`): rejects patches touching test files or
   non-Python files, and fingerprints the patched tree against the original to
-  catch a patch that edits something it didn't declare.
+  catch a patch that edits something it didn't declare. On top of the path
+  rules it runs all four AST hygiene checks — a patch is rejected if it deletes
+  an `assert`, adds a swallowing `except: pass`, adds a
+  `@pytest.mark.skip`/`skipif`/`xfail` marker, or adds a call to `sys.exit`,
+  `os._exit`, `pytest.exit`, `exit`, `quit`, or `os.abort`. The comparison is
+  against the original tree's own counts rather than an absolute threshold,
+  because repos legitimately contain bare excepts and `xfail` markers already.
+  All of it is AST-based: a regex would be both too eager (the string
+  `sys.exit` inside a docstring) and too easy to slip past (`except  :`, line
+  continuations, `exec`).
 
 **API**: `POST /forge`, `GET /forge/{execution_id}`, `GET /repos`,
 `GET /challenges`, `GET /challenges/{id}`, `GET /challenges/{id}/tree`,

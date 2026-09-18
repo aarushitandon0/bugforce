@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L50",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/asyncio/retry.py",
+  "lineno": 50,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/asyncio/retry.py\n+++ b/tenacity/asyncio/retry.py\n@@ -47,7 +47,7 @@\n     def __or__(  # type: ignore[override]\n         self, other: \"retry_base | async_retry_base\"\n     ) -> \"retry_any\":\n-        return retry_any(self, other)\n+        return None\n \n     @override\n     def __ror__(  # type: ignore[misc,override]\n",
+  "failing_tests": [
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result_or"
+  ],
+  "difficulty_score": 6.2723360655737705,
+  "title": "Return in async_retry_base:50",
+  "description": "test_retry_with_async_result_or raised TypeError."
+}

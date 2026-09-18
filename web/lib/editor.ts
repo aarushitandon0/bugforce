@@ -13,7 +13,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { python } from "@codemirror/lang-python";
 import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
-import { EditorState, RangeSet, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, RangeSet, StateEffect, StateField, type Extension } from "@codemirror/state";
 import {
   Decoration,
   drawSelection,
@@ -28,34 +28,42 @@ import {
 } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
+/*
+ * Every colour is a CSS custom property from app/globals.css, never a literal.
+ * That is what makes the editor follow the theme toggle: the light palette
+ * redefines the same names, and CodeMirror's stylesheet needs no rebuild.
+ */
 const C = {
-  base: "#0A0B0D",
-  panel: "#111316",
-  line: "#1E2126",
-  text: "#C9CDD3",
-  dim: "#6B7280",
-  error: "#E8A33D",
-  success: "#4ADE80",
-  causal: "#8B5CF6",
+  base: "var(--bf-base)",
+  panel: "var(--bf-panel)",
+  line: "var(--bf-line)",
+  text: "var(--bf-text)",
+  dim: "var(--bf-dim)",
+  error: "var(--bf-error)",
+  success: "var(--bf-success)",
+  causal: "var(--bf-causal)",
+  hover: "var(--bf-hover)",
 };
+
+/** `mix("var(--bf-x)", 24)` -> 24% of that colour over whatever is behind it. */
+const mix = (color: string, percent: number) => `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 
 // ---------------------------------------------------------------------------
 // look
 // ---------------------------------------------------------------------------
 
-const theme = EditorView.theme(
-  {
+const themeSpec = {
     "&": { height: "100%", backgroundColor: C.base, color: C.text, fontSize: "13px" },
     "&.cm-focused": { outline: "none" },
     ".cm-scroller": { fontFamily: "inherit", lineHeight: "1.65" },
     ".cm-content": { caretColor: C.text, padding: "8px 0" },
     ".cm-line": { padding: "0 16px 0 12px" },
     // block cursor, blinking on CodeMirror's own timer
-    ".cm-cursor, .cm-dropCursor": { borderLeft: "none", width: "0.6em", backgroundColor: `${C.text}B3` },
+    ".cm-cursor, .cm-dropCursor": { borderLeft: "none", width: "0.6em", backgroundColor: mix(C.text, 70) },
     ".cm-cursorLayer": { mixBlendMode: "normal" },
     "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, ::selection":
-      { backgroundColor: `${C.causal}4D` },
-    ".cm-activeLine": { backgroundColor: `${C.panel}` },
+      { backgroundColor: mix(C.causal, 30) },
+    ".cm-activeLine": { backgroundColor: C.hover },
     ".cm-gutters": { backgroundColor: C.base, color: C.dim, border: "none", borderRight: `1px solid ${C.line}` },
     ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 6px", minWidth: "4ch" },
     ".cm-activeLineGutter": { backgroundColor: C.panel, color: C.text },
@@ -65,17 +73,19 @@ const theme = EditorView.theme(
     ".cm-frame-mark.is-frame": { border: `1px solid ${C.causal}` },
     ".cm-frame-mark.is-visited": { backgroundColor: C.causal },
     ".cm-frame-mark.is-exception": { backgroundColor: C.error, border: `1px solid ${C.error}` },
-    ".cm-frame-line": { backgroundColor: `${C.causal}14` },
-    ".cm-exception-line": { backgroundColor: `${C.error}24` },
-    ".cm-target-line": { outline: `1px solid ${C.causal}66`, outlineOffset: "-1px" },
+    ".cm-frame-line": { backgroundColor: mix(C.causal, 7) },
+    // the failing line: a 6% amber wash plus a solid left border, so it stays
+    // obvious against coloured syntax without recolouring the code itself
+    ".cm-exception-line": { backgroundColor: mix(C.error, 6), boxShadow: `inset 2px 0 0 0 ${C.error}` },
+    ".cm-target-line": { outline: `1px solid ${mix(C.causal, 45)}`, outlineOffset: "-1px" },
     ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
       backgroundColor: "transparent",
       outline: `1px solid ${C.dim}`,
     },
     ".cm-nonmatchingBracket": { color: C.error },
-    ".cm-selectionMatch": { backgroundColor: `${C.dim}33` },
-    ".cm-searchMatch": { backgroundColor: `${C.error}33`, outline: `1px solid ${C.error}66` },
-    ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: `${C.error}66` },
+    ".cm-selectionMatch": { backgroundColor: mix(C.dim, 20) },
+    ".cm-searchMatch": { backgroundColor: mix(C.error, 20), outline: `1px solid ${mix(C.error, 45)}` },
+    ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: mix(C.error, 45) },
     ".cm-panels": { backgroundColor: C.panel, color: C.text, fontFamily: "inherit" },
     ".cm-panels.cm-panels-bottom": { borderTop: `1px solid ${C.line}` },
     ".cm-panels.cm-panels-top": { borderBottom: `1px solid ${C.line}` },
@@ -100,24 +110,52 @@ const theme = EditorView.theme(
     ".cm-button:hover": { borderColor: C.dim },
     ".cm-panel.cm-search [name=close]": { color: C.dim, fontSize: "16px" },
     ".cm-tooltip": { backgroundColor: C.panel, border: `1px solid ${C.line}`, color: C.text },
-  },
-  { dark: true },
-);
+};
 
 /*
- * Monochrome on purpose: the only colour in the editor is meaning (amber for
- * where it failed, violet for the trace), so syntax gets weight and dimness,
- * not hues.
+ * One spec, two themes. Every value in it is a CSS variable, so the two differ
+ * only in the `dark` flag -- which is what CodeMirror's own defaults key off.
+ * A compartment swaps them when the theme toggle flips.
  */
+const darkTheme = EditorView.theme(themeSpec, { dark: true });
+const lightTheme = EditorView.theme(themeSpec, { dark: false });
+const themeCompartment = new Compartment();
+
+/*
+ * A real syntax theme in the One Dark family, tuned to the base. The earlier
+ * monochrome-by-weight scheme was a deliberate choice and it was wrong: code
+ * without colour reads as unfinished. Meaning-carrying amber and violet are
+ * kept out of the text entirely -- they are the row tint and the gutter -- so
+ * they still read as special against this.
+ */
+const SYN = {
+  keyword: "var(--bf-syn-keyword)",
+  string: "var(--bf-syn-string)",
+  number: "var(--bf-syn-number)",
+  comment: "var(--bf-syn-comment)",
+  fn: "var(--bf-syn-function)",
+  cls: "var(--bf-syn-class)",
+  decorator: "var(--bf-syn-decorator)",
+  operator: "var(--bf-syn-operator)",
+  variable: "var(--bf-syn-variable)",
+  invalid: "var(--bf-syn-invalid)",
+};
+
 const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword], fontWeight: "700" },
-  { tag: [t.bool, t.null, t.self], fontWeight: "700" },
-  { tag: [t.comment, t.lineComment, t.blockComment, t.docString], color: C.dim },
-  { tag: [t.string, t.special(t.string)], color: `color-mix(in srgb, ${C.text} 62%, ${C.dim})` },
-  { tag: [t.number], color: C.text },
-  { tag: [t.function(t.definition(t.variableName)), t.definition(t.className)], color: C.text, fontWeight: "700" },
-  { tag: [t.meta, t.annotation], color: C.dim },
-  { tag: t.invalid, color: C.error },
+  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword], color: SYN.keyword },
+  { tag: [t.bool, t.null, t.self, t.atom], color: SYN.number },
+  { tag: [t.comment, t.lineComment, t.blockComment], color: SYN.comment, fontStyle: "italic" },
+  { tag: [t.docString], color: SYN.string, fontStyle: "italic" },
+  { tag: [t.string, t.special(t.string), t.regexp, t.escape], color: SYN.string },
+  { tag: [t.number, t.integer, t.float], color: SYN.number },
+  { tag: [t.function(t.definition(t.variableName)), t.function(t.variableName)], color: SYN.fn },
+  { tag: [t.definition(t.className), t.className, t.typeName, t.standard(t.variableName)], color: SYN.cls },
+  { tag: [t.meta, t.annotation, t.modifier], color: SYN.decorator },
+  { tag: [t.operator, t.derefOperator, t.arithmeticOperator, t.logicOperator, t.compareOperator], color: SYN.operator },
+  { tag: [t.propertyName, t.attributeName], color: SYN.variable },
+  { tag: [t.variableName, t.name], color: SYN.variable },
+  { tag: [t.punctuation, t.bracket, t.separator], color: C.dim },
+  { tag: t.invalid, color: SYN.invalid },
 ]);
 
 // ---------------------------------------------------------------------------
@@ -242,10 +280,13 @@ export class Workspace {
   private scroll = new Map<string, StateEffect<unknown>>();
   private active: string | null = null;
   private visited: ReadonlySet<number> = new Set();
+  private dark = true;
 
   constructor(
     parent: HTMLElement,
     private readonly onDocChange: (path: string) => void,
+    /** 1-based cursor line, for the breadcrumb */
+    private readonly onCursor: (line: number) => void = () => {},
   ) {
     this.view = new EditorView({
       parent,
@@ -254,6 +295,9 @@ export class Workspace {
         if (this.active) {
           this.states.set(this.active, view.state);
           if (trs.some((tr) => tr.docChanged)) this.onDocChange(this.active);
+        }
+        if (trs.some((tr) => tr.docChanged || tr.selection)) {
+          this.onCursor(view.state.doc.lineAt(view.state.selection.main.head).number);
         }
       },
     });
@@ -278,7 +322,7 @@ export class Workspace {
       search({ top: false }),
       keymap.of([...searchKeymap, ...historyKeymap, indentWithTab, ...defaultKeymap]),
       syntaxHighlighting(highlight),
-      theme,
+      themeCompartment.of(this.dark ? darkTheme : lightTheme),
       frameField(file.marks, this.visited),
       EditorState.tabSize.of(4),
     ];
@@ -300,6 +344,7 @@ export class Workspace {
     if (this.active !== file.path) {
       this.active = file.path;
       this.view.setState(state);
+      this.onCursor(state.doc.lineAt(state.selection.main.head).number);
       this.view.dispatch({ effects: setVisited.of(this.visited) });
       const snapshot = this.scroll.get(file.path);
       if (snapshot && line === undefined) this.view.dispatch({ effects: snapshot });
@@ -315,6 +360,19 @@ export class Workspace {
       selection: { anchor: target.from + indent },
       effects: [setTarget.of(target.from), EditorView.scrollIntoView(target.from, { y: "center" })],
     });
+  }
+
+  /** Follows the app's theme toggle. Every colour is a CSS variable, so only
+   * CodeMirror's own `dark` defaults actually need swapping. */
+  setDark(dark: boolean): void {
+    if (dark === this.dark) return;
+    this.dark = dark;
+    const next = dark ? darkTheme : lightTheme;
+    this.view.dispatch({ effects: themeCompartment.reconfigure(next) });
+    for (const [path, state] of this.states) {
+      if (path === this.active) continue;
+      this.states.set(path, state.update({ effects: themeCompartment.reconfigure(next) }).state);
+    }
   }
 
   setVisited(visited: ReadonlySet<number>): void {

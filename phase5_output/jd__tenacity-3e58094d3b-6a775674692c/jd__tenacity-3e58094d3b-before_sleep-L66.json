@@ -1,0 +1,18 @@
+{
+  "id": "jd__tenacity-3e58094d3b-before_sleep-L66",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/before_sleep.py",
+  "lineno": 66,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/before_sleep.py\n+++ b/tenacity/before_sleep.py\n@@ -63,4 +63,4 @@\n \n         logger.log(log_level, msg)\n \n-    return log_it\n+    return None\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestBeforeAfterAttempts::test_before_sleep_log_raises",
+    "tests/test_tenacity.py::TestBeforeAfterAttempts::test_before_sleep_log_raises_with_exc_info",
+    "tests/test_tenacity.py::TestBeforeAfterAttempts::test_before_sleep_log_returns",
+    "tests/test_tenacity.py::TestBeforeAfterAttempts::test_before_sleep_log_returns_with_exc_info"
+  ],
+  "difficulty_score": 4.501844262295082,
+  "title": "Return in before_sleep_log",
+  "description": "test_before_sleep_log_raises expected 2, got 0."
+}

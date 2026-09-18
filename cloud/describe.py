@@ -99,6 +99,11 @@ class DescribeInput:
     operator_id: str
     module_path: str  # fallback title + post-check only; never sent to the model
     forbidden_identifiers: set[str] = field(default_factory=set)
+    # Fallback title only, and never sent to the model: the module basename
+    # alone collides constantly (16 of 20 tenacity challenges are RETURN
+    # mutations, so "Return in retry" appeared six times).
+    enclosing_function: str | None = None
+    enclosing_class: str | None = None
 
 
 @dataclass
@@ -242,6 +247,8 @@ def build_input(
         operator_id=site.operator_id,
         module_path=site.path,
         forbidden_identifiers={n for n in forbidden if _usable(n)},
+        enclosing_function=site.enclosing_function_name,
+        enclosing_class=site.enclosing_class_name,
     )
 
 
@@ -249,14 +256,29 @@ def build_input(
 # deterministic fallback
 # ---------------------------------------------------------------------------
 
+def title_subject(inp: DescribeInput) -> str:
+    """What the fallback title says the defect is "in".
+
+    The enclosing function, except that a dunder or a private helper names
+    nothing a learner would recognise -- "Return in __call__" was 7 of the 20
+    tenacity titles -- so for those the enclosing class wins. Module-level
+    mutations have neither and fall back to the module basename.
+    """
+    fn = inp.enclosing_function
+    if fn and inp.enclosing_class and fn.startswith("_"):
+        return inp.enclosing_class
+    return fn or inp.enclosing_class or module_basename(inp.module_path)
+
+
 def fallback_description(inp: DescribeInput) -> Description:
     """The template. Works with Bedrock switched off, and is the spec'd shape:
-    title "{operator_label} in {module_basename}",
+    title "{operator_label} in {enclosing_function or module_basename}",
     description "{test_name} expected {expected}, got {actual}."
     A failure with no equality assertion has no expected/actual to report, so
     it names the exception type instead."""
     label = OPERATOR_LABELS.get(inp.operator_id, inp.operator_id.replace("_", " ").title())
-    title = f"{label} in {module_basename(inp.module_path)}"
+    where = title_subject(inp)
+    title = f"{label} in {where}"
     if inp.expected is not None and inp.actual is not None:
         description = f"{inp.test_name} expected {inp.expected}, got {inp.actual}."
     elif inp.exception_type:
@@ -264,6 +286,23 @@ def fallback_description(inp: DescribeInput) -> Description:
     else:
         description = f"{inp.test_name} failed."
     return Description(title=title, description=description, source="template")
+
+
+def disambiguate_titles(titles: list[str], linenos: list[int]) -> list[str]:
+    """Appends ":<lineno>" to every title that is not unique in the batch.
+
+    Two mutations of the same operator inside one function still collide
+    (a function with two returns), and a grid of identical card titles
+    reads as a broken build. Line number is the cheapest tiebreak that
+    stays deterministic; it leaks no more than the title already does.
+    """
+    counts: dict[str, int] = {}
+    for title in titles:
+        counts[title] = counts.get(title, 0) + 1
+    return [
+        f"{title}:{lineno}" if counts[title] > 1 else title
+        for title, lineno in zip(titles, linenos)
+    ]
 
 
 # ---------------------------------------------------------------------------

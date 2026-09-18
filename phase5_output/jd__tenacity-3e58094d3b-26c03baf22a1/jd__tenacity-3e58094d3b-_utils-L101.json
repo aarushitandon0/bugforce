@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-_utils-L101",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/_utils.py",
+  "lineno": 101,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/_utils.py\n+++ b/tenacity/_utils.py\n@@ -98,7 +98,7 @@\n         # When running under sphinx it appears this can be none?\n         if cb.__module__:\n             segments.insert(0, cb.__module__)\n-    return \".\".join(segments)\n+    return None\n \n \n time_unit_type = int | float | timedelta\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestRetryingName::test_get_fn_name_decorator"
+  ],
+  "difficulty_score": 6.384836065573771,
+  "title": "Return in get_callback_name",
+  "description": "test_get_fn_name_decorator raised TypeError."
+}

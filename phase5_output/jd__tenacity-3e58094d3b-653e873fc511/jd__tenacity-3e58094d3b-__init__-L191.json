@@ -1,0 +1,25 @@
+{
+  "id": "jd__tenacity-3e58094d3b-__init__-L191",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/asyncio/__init__.py",
+  "lineno": 191,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/asyncio/__init__.py\n+++ b/tenacity/asyncio/__init__.py\n@@ -188,7 +188,7 @@\n \n         self.begin()\n         self._retry_state = RetryCallState(self, fn=None, args=(), kwargs={})\n-        return self\n+        return None\n \n     async def __anext__(self) -> AttemptManager:\n         if not self.enabled:\n",
+  "failing_tests": [
+    "tests/test_asyncio.py::TestContextManager::test_async_with_attempt_manager",
+    "tests/test_asyncio.py::TestContextManager::test_do_max_attempts",
+    "tests/test_asyncio.py::TestContextManager::test_reraise",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_exc",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result_and",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result_or",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result_rand",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result_ror",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_result",
+    "tests/test_asyncio.py::TestContextManager::test_sleeps"
+  ],
+  "difficulty_score": 5.275,
+  "title": "Return in AsyncRetrying:191",
+  "description": "test_async_with_attempt_manager raised TypeError."
+}

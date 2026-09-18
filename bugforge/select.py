@@ -19,6 +19,7 @@ run's own --tb=long output.
 from __future__ import annotations
 
 import re
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -71,6 +72,12 @@ class ClassificationResult:
     representative_test: str | None = None
     score_breakdown: ScoreBreakdown | None = None
     reason: str = ""
+    # wall-clock for this candidate's pytest runs, so a run report can split
+    # the pipeline into "targeted covering-test runs" vs "full-suite runs"
+    # without re-timing anything.
+    targeted_seconds: float = 0.0
+    full_suite_seconds: float = 0.0
+    full_suite_ran: bool = False
 
 
 def _clamp(lo: float, hi: float, x: float) -> float:
@@ -188,6 +195,32 @@ def classify_candidate(
     test_to_files: dict[str, set[str]],
     timeout: int = TIMEOUT_S,
 ) -> ClassificationResult:
+    """Classifies one candidate and records how long its pytest runs took.
+
+    The timing is stamped on the way out rather than at each return, because
+    there are six ways a candidate can be rejected and every one of them still
+    has to report the seconds it burned.
+    """
+    timing: dict[str, float | bool] = {"targeted": 0.0, "full": 0.0, "ran_full": False}
+    result = _classify_candidate(
+        repo_dir, python, baseline, site, mutated_source, test_to_files, timeout, timing
+    )
+    result.targeted_seconds = float(timing["targeted"])
+    result.full_suite_seconds = float(timing["full"])
+    result.full_suite_ran = bool(timing["ran_full"])
+    return result
+
+
+def _classify_candidate(
+    repo_dir: Path,
+    python: str,
+    baseline: Baseline,
+    site: MutationSite,
+    mutated_source: str,
+    test_to_files: dict[str, set[str]],
+    timeout: int,
+    timing: dict,
+) -> ClassificationResult:
     covering_tests = baseline.tests_for_line(site.path, site.lineno)
 
     if not covering_tests:
@@ -195,7 +228,9 @@ def classify_candidate(
             site=site, outcome=Outcome.TEST_GAP, covering_tests=[], reason="no covering tests in baseline"
         )
 
+    _t0 = time.perf_counter()
     targeted = run_mutation(repo_dir, python, site, mutated_source, covering_tests, timeout=timeout)
+    timing["targeted"] = time.perf_counter() - _t0
 
     if targeted.timed_out:
         return ClassificationResult(
@@ -218,7 +253,10 @@ def classify_candidate(
 
     # tentative CANDIDATE -- confirm with a full-suite run for accurate
     # failing/total counts and a clean traceback.
+    _t0 = time.perf_counter()
     full = run_mutation(repo_dir, python, site, mutated_source, test_ids=None, timeout=timeout)
+    timing["full"] = time.perf_counter() - _t0
+    timing["ran_full"] = True
 
     if full.timed_out:
         return ClassificationResult(

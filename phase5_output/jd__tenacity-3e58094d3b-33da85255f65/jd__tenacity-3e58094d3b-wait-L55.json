@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-wait-L55",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/wait.py",
+  "lineno": 55,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/wait.py\n+++ b/tenacity/wait.py\n@@ -52,7 +52,7 @@\n             return NotImplemented\n         # A plain callable -- `WaitBaseT` admits those, and a function has no\n         # `__add__` of its own to handle `callable + strategy`.\n-        return wait_combine(self, other)\n+        return None\n \n \n WaitBaseT = wait_base | typing.Callable[[\"RetryCallState\"], float | int]\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestWaitConditions::test_wait_radd_plain_callable"
+  ],
+  "difficulty_score": 6.2723360655737705,
+  "title": "Return in wait_base:55",
+  "description": "test_wait_radd_plain_callable expected an instance of wait_combine, got None."
+}

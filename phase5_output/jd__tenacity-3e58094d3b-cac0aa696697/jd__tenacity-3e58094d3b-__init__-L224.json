@@ -1,0 +1,21 @@
+{
+  "id": "jd__tenacity-3e58094d3b-__init__-L224",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/asyncio/__init__.py",
+  "lineno": 224,
+  "mutator_name": "NEGATION",
+  "diff": "--- a/tenacity/asyncio/__init__.py\n+++ b/tenacity/asyncio/__init__.py\n@@ -221,7 +221,7 @@\n             fn, functools.WRAPPER_ASSIGNMENTS + (\"__defaults__\", \"__kwdefaults__\")\n         )\n         async def async_wrapped(*args: t.Any, **kwargs: t.Any) -> t.Any:\n-            if not self.enabled:\n+            if self.enabled:\n                 return await fn(*args, **kwargs)  # type: ignore[misc]\n             # Always create a copy to prevent overwriting the local contexts when\n             # calling the same wrapped functions multiple times in the same stack\n",
+  "failing_tests": [
+    "tests/test_asyncio.py::TestAsyncio::test_attempt_number_is_correct_for_interleaved_coroutines",
+    "tests/test_asyncio.py::TestAsyncio::test_retry",
+    "tests/test_asyncio.py::TestAsyncio::test_statistics_visible_through_outer_decorator",
+    "tests/test_asyncio.py::TestAsyncio::test_stop_after_attempt",
+    "tests/test_asyncio.py::TestDecoratorWrapper::test_retry_function_attributes",
+    "tests/test_asyncio.py::TestSyncFunctionWithAsyncSleep::test_sync_function_with_async_sleep",
+    "tests/test_issue_478.py::TestIssue478::test_async"
+  ],
+  "difficulty_score": 3.8125,
+  "title": "Negation in async_wrapped",
+  "description": "test_attempt_number_is_correct_for_interleaved_coroutines raised OSError."
+}

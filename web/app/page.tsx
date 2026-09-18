@@ -4,7 +4,7 @@ import { Landing } from "@/components/screens/Landing";
 
 export default function Page() {
   return (
-    <Shell>
+    <Shell wide>
       <Suspense>
         <Landing />
       </Suspense>

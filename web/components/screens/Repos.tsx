@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getRepos, type RepoSummary } from "@/lib/api";
+import { GAPS_BY_FILE } from "@/lib/forge-data";
 import { plural, repoDisplay, repoShort } from "@/lib/format";
 import { useApi } from "@/lib/useApi";
 import { ErrorLine, Loading, PageHeader } from "../Status";
@@ -11,19 +12,83 @@ export function courseHref(repo: string) {
   return `/repo/?name=${encodeURIComponent(repo)}`;
 }
 
+/**
+ * Challenges per score band. It used to be 18px of 5px bars, which was a
+ * texture rather than a chart; at 44px with the band under each bar it can
+ * actually be read.
+ */
 function Histogram({ counts, edges }: { counts: number[]; edges: number[] }) {
   const max = Math.max(1, ...counts);
-  const described = counts.map((c, i) => `${edges[i]}–${edges[i + 1]}: ${c}`).join(", ");
+  const described = counts.map((c, i) => `${edges[i]}-${edges[i + 1]}: ${c}`).join(", ");
   return (
-    <span className="inline-flex h-[18px] items-end gap-[2px] border-b border-line" role="img" aria-label={`difficulty histogram, ${described}`}>
+    <span
+      className="inline-flex items-end gap-[3px]"
+      role="img"
+      aria-label={`difficulty histogram, ${described}`}
+    >
       {counts.map((count, i) => (
-        <span
-          key={i}
-          className={count ? "w-[5px] bg-text" : "w-[5px]"}
-          style={{ height: count ? `${Math.max(12, (count / max) * 100)}%` : 0 }}
-        />
+        <span key={i} className="flex w-[16px] flex-col items-center gap-1" title={`score ${edges[i]}-${edges[i + 1]}: ${count}`}>
+          <span className="text-[9px] leading-none tabular-nums text-dim">{count || ""}</span>
+          <span className="flex h-[44px] w-full items-end border-b border-line">
+            <span
+              className={count ? "w-full bg-text" : "w-full"}
+              style={{ height: count ? `${Math.max(8, (count / max) * 100)}%` : 0 }}
+            />
+          </span>
+          <span className="text-[9px] leading-none tabular-nums text-dim">{edges[i]}</span>
+        </span>
       ))}
     </span>
+  );
+}
+
+/**
+ * The gap report's headline, on the page that otherwise has one row and a lot
+ * of empty space. It is the most interesting number the pipeline produces and
+ * it was sitting unused.
+ */
+function GapSummary() {
+  const { files, total, repo } = GAPS_BY_FILE;
+  if (total === 0 || files.length === 0) return null;
+  const top = files[0];
+  const max = files[0].count;
+
+  return (
+    <section className="mt-10 border border-line" aria-label="test gap summary">
+      <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-line px-4 py-2.5">
+        <h2 className="label">where the tests are not looking</h2>
+        <Link href={`/gaps/?repo=${encodeURIComponent(repo)}`} className="link text-[11px]">
+          full report &rarr;
+        </Link>
+      </div>
+      <div className="px-4 py-4">
+        <p className="max-w-[72ch] text-[13px] leading-[1.7] text-text">
+          <span className="text-error">{top.count}</span> of {total} mutations that no test noticed are in one file,{" "}
+          <span className="text-text">{top.path}</span>. Every one of them is a line the suite executes but never
+          checks the result of.
+        </p>
+        <ul className="mt-4 space-y-1.5">
+          {files.map((file) => (
+            <li key={file.path} className="flex items-center gap-3 text-[12px]">
+              <span className="w-[26ch] shrink-0 truncate text-dim" title={file.path}>
+                {file.path}
+              </span>
+              <span className="flex h-[10px] min-w-0 flex-1 items-center">
+                <span
+                  className="block h-[10px] bg-error"
+                  style={{ width: `${(file.count / max) * 100}%` }}
+                  aria-hidden
+                />
+              </span>
+              <span className="w-[3ch] shrink-0 text-right tabular-nums text-text">{file.count}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-[11px] text-dim">
+          counted from the last forge. a gap is a mutation the repo&apos;s own suite ran straight past.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -114,6 +179,8 @@ export function Repos() {
             difficulty: challenges per score band, {data.histogram_edges[0]} to{" "}
             {data.histogram_edges[data.histogram_edges.length - 1]}, easiest on the left
           </p>
+
+          <GapSummary />
         </>
       )}
     </>

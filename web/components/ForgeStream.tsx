@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ApiError, getForge, type ForgeStatus, type StreamRow } from "@/lib/api";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { ApiError, getForge, type ForgeStatus, type StreamRow, type StreamVerdict } from "@/lib/api";
+import { REPLAY } from "@/lib/forge-data";
 import { clock, plural, repoDisplay, truncateLeft } from "@/lib/format";
 import { Cursor } from "./Cursor";
 
@@ -78,6 +79,66 @@ function useElapsed(status: ForgeStatus | null): string | null {
   return clock(end - Date.parse(status.started_at));
 }
 
+
+// ---------------------------------------------------------------------------
+// replay
+// ---------------------------------------------------------------------------
+
+/** One row every 25ms, then a pause on the finished screen, then round again. */
+const REPLAY_ROW_MS = 25;
+const REPLAY_PAUSE_TICKS = 180;
+/** rows revealed before the first mutation line, so the two setup steps land */
+const REPLAY_LEAD_TICKS = 28;
+
+/**
+ * A real recorded forge, replayed.
+ *
+ * The stream box sits in the most important position on the landing page and
+ * used to say "idle" over two comment lines. This plays back the run in
+ * phase5_output -- the same rows, the same taxonomy, the same counts -- until
+ * the viewer forges something themselves, at which point the live stream takes
+ * over. It is labelled `replay` in the corner so it never pretends to be live.
+ */
+function useReplay(enabled: boolean): ForgeStatus | null {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) {
+      setTick(0);
+      return;
+    }
+    const last = REPLAY_LEAD_TICKS + REPLAY.rows.length + REPLAY_PAUSE_TICKS;
+    const timer = setInterval(() => setTick((t) => (t >= last ? 0 : t + 1)), REPLAY_ROW_MS);
+    return () => clearInterval(timer);
+  }, [enabled]);
+
+  return useMemo(() => {
+    if (!enabled) return null;
+    const shown = Math.max(0, Math.min(REPLAY.rows.length, tick - REPLAY_LEAD_TICKS));
+    const rows = REPLAY.rows.slice(0, shown);
+    const done = shown === REPLAY.rows.length;
+    const counts: Record<StreamVerdict, number> = { keep: 0, drop: 0, gap: 0, scoring: 0 };
+    for (const row of rows) counts[row.verdict] += 1;
+    return {
+      execution_id: "replay",
+      repo_url: null,
+      status: done ? "SUCCEEDED" : "RUNNING",
+      phase: done ? "done" : tick < REPLAY_LEAD_TICKS / 2 ? "baseline" : tick < REPLAY_LEAD_TICKS ? "generate" : "run",
+      started_at: new Date().toISOString(),
+      stopped_at: null,
+      error: null,
+      cause: null,
+      baseline: tick >= REPLAY_LEAD_TICKS / 2 ? REPLAY.baseline : null,
+      candidates: REPLAY.candidates,
+      batches: tick >= REPLAY_LEAD_TICKS ? REPLAY.batches : 0,
+      batches_done: Math.round((shown / REPLAY.rows.length) * REPLAY.batches),
+      rows,
+      counts,
+      summary: done ? { ...REPLAY.summary, repo: REPLAY.repo } : null,
+    } satisfies ForgeStatus;
+  }, [enabled, tick]);
+}
+
 // ---------------------------------------------------------------------------
 // rows
 // ---------------------------------------------------------------------------
@@ -133,13 +194,20 @@ export function ForgeStream({
   executionId,
   repoLabel,
   localLines,
+  legend = false,
 }: {
   executionId: string | null;
   repoLabel: string | null;
   localLines: LocalLine[];
+  /** show the verdict key in the footer instead of as a block underneath */
+  legend?: boolean;
 }) {
-  const { status, problem } = useForgeStatus(executionId);
-  const elapsed = useElapsed(status);
+  const { status: live, problem } = useForgeStatus(executionId);
+  // the replay yields the moment there is anything real to show
+  const replaying = executionId === null && localLines.length === 0;
+  const replay = useReplay(replaying);
+  const status = live ?? replay;
+  const elapsed = useElapsed(replaying ? null : live);
   const bodyRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -162,10 +230,25 @@ export function ForgeStream({
   const headerRepo = repoLabel ?? (repo ? repoDisplay(repo) : null);
 
   return (
-    <div className="border border-line bg-panel">
-      <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-2 text-[11px] text-dim">
+    /*
+     * data-theme="dark" re-declares the whole dark palette for this subtree, so
+     * the stream stays a terminal on a light page -- the way a terminal window
+     * does on a light desktop. Without it every verdict colour in here would be
+     * a dark ink on a white card and the page would lose its one anchor.
+     */
+    <div
+      data-theme="dark"
+      className="flex h-full min-h-0 flex-col border border-line bg-panel text-text"
+    >
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-4 py-2 text-[11px] text-dim">
         <span className="truncate">
-          {executionId ? (
+          {replaying ? (
+            <>
+              <span className="text-text">{REPLAY.display}</span>
+              {" \u00b7 "}
+              {REPLAY.commit}
+            </>
+          ) : executionId ? (
             <>
               {headerRepo && <span className="text-text">{headerRepo}</span>}
               {headerRepo && " · "}
@@ -177,7 +260,17 @@ export function ForgeStream({
         </span>
         <span className="shrink-0 tabular-nums">
           {elapsed && <>{elapsed} · </>}
-          {status ? status.status.toLowerCase().replace("_", " ") : executionId ? "connecting" : "idle"}
+          {replaying ? (
+            <span className="border border-line px-1.5 py-px" title="a real recorded forge, not a live one">
+              replay
+            </span>
+          ) : status ? (
+            status.status.toLowerCase().replace("_", " ")
+          ) : executionId ? (
+            "connecting"
+          ) : (
+            "idle"
+          )}
         </span>
       </div>
 
@@ -187,15 +280,11 @@ export function ForgeStream({
         role="log"
         aria-live="polite"
         aria-label="generation stream"
-        className="max-h-[520px] min-h-[220px] overflow-auto px-4 py-3 text-[12.5px] leading-[1.75]"
+        className="min-h-[240px] flex-1 overflow-auto px-4 py-3 text-[12.5px] leading-[1.75]"
       >
-        {localLines.length === 0 && !executionId && (
-          <div className="text-dim">
-            <div className="whitespace-pre-wrap"># every mutation BugForge tries shows up here as it is classified:</div>
-            <div className="whitespace-pre-wrap"># the ones it keeps, and the ones it throws away.</div>
-            <div className="mt-1 text-text">
-              $ <Cursor />
-            </div>
+        {replaying && (
+          <div className="whitespace-pre-wrap text-dim">
+            $ forge github.com/{REPLAY.display}
           </div>
         )}
 
@@ -277,7 +366,7 @@ export function ForgeStream({
           </div>
         )}
 
-        {(running || (localLines.length > 0 && !executionId) || finished) && (
+        {(running || replaying || (localLines.length > 0 && !executionId) || finished) && (
           <div className="mt-1 text-text">
             {running ? "" : "$ "}
             <Cursor />
@@ -285,16 +374,36 @@ export function ForgeStream({
         )}
       </div>
 
-      {status && (
-        <div className="flex flex-wrap gap-x-5 border-t border-line px-4 py-2 text-[11px] tabular-nums text-dim">
-          <span>
-            <span className="text-success">{status.counts.keep}</span> kept
-          </span>
-          <span>{status.counts.drop} dropped</span>
-          <span>
-            <span className="text-error">{status.counts.gap}</span> test gaps
-          </span>
-          {status.counts.scoring > 0 && <span>{status.counts.scoring} scoring</span>}
+      {(status || legend) && (
+        <div className="shrink-0 border-t border-line px-4 py-2 text-[11px] text-dim">
+          {status && (
+            <div className="flex flex-wrap gap-x-5 tabular-nums">
+              <span>
+                <span className="text-success">{status.counts.keep}</span> kept
+              </span>
+              <span>{status.counts.drop} dropped</span>
+              <span>
+                <span className="text-error">{status.counts.gap}</span> test gaps
+              </span>
+              {status.counts.scoring > 0 && <span>{status.counts.scoring} scoring</span>}
+            </div>
+          )}
+          {legend && (
+            <dl className={`flex flex-wrap gap-x-5 gap-y-0.5 ${status ? "mt-1.5 border-t border-line pt-1.5" : ""}`}>
+              <div>
+                <dt className="inline text-success">&#10003; keep</dt>{" "}
+                <dd className="inline">caught by the suite</dd>
+              </div>
+              <div>
+                <dt className="inline">&#10007; drop</dt>{" "}
+                <dd className="inline">too loud, too easy, timed out</dd>
+              </div>
+              <div>
+                <dt className="inline text-error">&#10007; test gap</dt>{" "}
+                <dd className="inline">no test noticed it</dd>
+              </div>
+            </dl>
+          )}
         </div>
       )}
     </div>

@@ -6,16 +6,86 @@
  * shadow, a sans-serif face or an off-palette colour cannot be written with a
  * utility class at all.
  */
+/*
+ * Every colour in the app is one of these tokens. The palette is declared
+ * twice -- once for dark, once for light -- as --bf-* custom properties, and
+ * the Tailwind colour scale is a thin alias layer over them, so a utility
+ * class like `text-dim` follows the theme without any component knowing a
+ * theme exists.
+ */
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bf-base: #0a0b0d;
+  --bf-panel: #111316;
+  --bf-line: #1e2126;
+  --bf-text: #c9cdd3;
+  --bf-dim: #6b7280;
+  --bf-error: #e8a33d;
+  --bf-success: #4ade80;
+  --bf-causal: #8b5cf6;
+  /* chrome: the activity bar and the row a panel sits on */
+  --bf-chrome: #0d0f12;
+  --bf-hover: #171a1f;
+
+  /*
+   * Editor syntax. Real hues -- code without colour reads as unfinished.
+   * Amber and violet stay out of the text and carry meaning through the row
+   * tint and the gutter instead, so they still stand out against this.
+   */
+  --bf-syn-keyword: #c678dd;
+  --bf-syn-string: #98c379;
+  --bf-syn-number: #d19a66;
+  --bf-syn-comment: #5c6370;
+  --bf-syn-function: #61afef;
+  --bf-syn-class: #e5c07b;
+  --bf-syn-decorator: #56b6c2;
+  --bf-syn-operator: #56b6c2;
+  --bf-syn-variable: #c9cdd3;
+  --bf-syn-invalid: #e06c75;
+}
+
+/*
+ * Light is not an inversion: it aims at a well-lit terminal on paper. Same
+ * restraint -- square corners, hairline borders, no shadows -- new values.
+ */
+[data-theme="light"] {
+  color-scheme: light;
+  --bf-base: #fafaf8;
+  --bf-panel: #ffffff;
+  --bf-line: #e4e4e0;
+  --bf-text: #1c1c1a;
+  --bf-dim: #6b6b66;
+  --bf-error: #b45309;
+  --bf-success: #15803d;
+  --bf-causal: #6d28d9;
+  --bf-chrome: #f2f2ee;
+  --bf-hover: #efefea;
+
+  --bf-syn-keyword: #a626a4;
+  --bf-syn-string: #45803f;
+  --bf-syn-number: #b76b01;
+  --bf-syn-comment: #8e8e87;
+  --bf-syn-function: #3562c4;
+  --bf-syn-class: #9a6700;
+  --bf-syn-decorator: #0184bc;
+  --bf-syn-operator: #0184bc;
+  --bf-syn-variable: #1c1c1a;
+  --bf-syn-invalid: #ca1243;
+}
+
 @theme {
   --color-*: initial;
-  --color-base: #0a0b0d;
-  --color-panel: #111316;
-  --color-line: #1e2126;
-  --color-text: #c9cdd3;
-  --color-dim: #6b7280;
-  --color-error: #e8a33d;
-  --color-success: #4ade80;
-  --color-causal: #8b5cf6;
+  --color-base: var(--bf-base);
+  --color-panel: var(--bf-panel);
+  --color-line: var(--bf-line);
+  --color-text: var(--bf-text);
+  --color-dim: var(--bf-dim);
+  --color-error: var(--bf-error);
+  --color-success: var(--bf-success);
+  --color-causal: var(--bf-causal);
+  --color-chrome: var(--bf-chrome);
+  --color-hover: var(--bf-hover);
 
   --font-*: initial;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -52,9 +122,32 @@
   }
 }
 
+/*
+ * The Tailwind colour scale, re-declared on every element that carries a theme.
+ *
+ * A custom property is substituted where it is DECLARED, not where it is used:
+ * with the aliases living only in @theme (i.e. on :root), the computed value
+ * inherits down and a subtree that re-declares --bf-* changes nothing. The
+ * landing page's stream relies on exactly that -- it is a terminal, and stays
+ * dark on a light page -- so the aliases are re-declared here.
+ */
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --color-base: var(--bf-base);
+  --color-panel: var(--bf-panel);
+  --color-line: var(--bf-line);
+  --color-text: var(--bf-text);
+  --color-dim: var(--bf-dim);
+  --color-error: var(--bf-error);
+  --color-success: var(--bf-success);
+  --color-causal: var(--bf-causal);
+  --color-chrome: var(--bf-chrome);
+  --color-hover: var(--bf-hover);
+}
+
 @layer base {
   html {
-    color-scheme: dark;
     background: var(--color-base);
   }
 

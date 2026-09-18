@@ -1,0 +1,18 @@
+{
+  "id": "jd__tenacity-3e58094d3b-stop-L117",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/stop.py",
+  "lineno": 117,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/stop.py\n+++ b/tenacity/stop.py\n@@ -114,7 +114,7 @@\n     def __call__(self, retry_state: \"RetryCallState\") -> bool:\n         if retry_state.seconds_since_start is None:\n             raise RuntimeError(\"__call__() called but seconds_since_start is not set\")\n-        return retry_state.seconds_since_start >= self.max_delay\n+        return None\n \n \n class stop_before_delay(stop_base):\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestStopConditions::test_stop_all",
+    "tests/test_tenacity.py::TestStopConditions::test_stop_and",
+    "tests/test_tenacity.py::TestStopConditions::test_stop_any",
+    "tests/test_tenacity.py::TestStopConditions::test_stop_or"
+  ],
+  "difficulty_score": 5.501844262295082,
+  "title": "Return in stop_after_delay",
+  "description": "test_stop_all expected True, got False."
+}

@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 
-from bugforge.baseline import compute_baseline
+from bugforge.baseline import compute_baseline, is_cached
 from bugforge.mutate import MutationError, apply, find_candidates
 from bugforge.package import package_challenge
+from bugforge.run_report import Stopwatch, build_run_report, format_taxonomy, write_run_report
 from bugforge.select import Outcome, run_selection
 
 
@@ -29,13 +31,20 @@ def main() -> None:
     args.repo_dir = args.repo_dir.resolve()
     args.venv_python = str(Path(args.venv_python).resolve())
 
+    watch = Stopwatch()
+
     print("loading baseline...")
-    baseline = compute_baseline(args.repo_dir, args.package, args.venv_python)
-    print(f"baseline: {baseline.total_tests} tests, {baseline.covered_line_count()} covered lines\n")
+    baseline_cache_hit = is_cached(args.repo_dir)
+    with watch.stage("baseline"):
+        baseline = compute_baseline(args.repo_dir, args.package, args.venv_python)
+    print(f"baseline: {baseline.total_tests} tests, {baseline.covered_line_count()} covered lines "
+          f"({'cache hit' if baseline_cache_hit else 'computed'})\n")
 
     pkg_dir = args.repo_dir / args.package
     sites_and_sources = []
     sources_by_file = {}
+    candidates_generated = 0
+    generate_started = time.perf_counter()
     for py_file in sorted(pkg_dir.rglob("*.py")):
         rel = str(py_file.relative_to(args.repo_dir)).replace("\\", "/")
         source = py_file.read_text(encoding="utf-8")
@@ -45,6 +54,7 @@ def main() -> None:
         except SyntaxError:
             continue
         # only sites on covered lines make it into the pipeline at all
+        candidates_generated += len(sites)
         for site in sites:
             if not baseline.tests_for_line(site.path, site.lineno):
                 continue
@@ -54,18 +64,32 @@ def main() -> None:
                 continue
             sites_and_sources.append((site, mutated))
 
+    watch.record("generate_candidates", time.perf_counter() - generate_started)
+    candidates_on_covered_lines = len(sites_and_sources)
+
     if args.limit:
         sites_and_sources = sites_and_sources[: args.limit]
 
     print(f"running {len(sites_and_sources)} covered candidates through the pipeline...\n")
-    results, taxonomy = run_selection(args.repo_dir, args.venv_python, baseline, sites_and_sources)
+    with watch.stage("selection_total"):
+        results, taxonomy = run_selection(args.repo_dir, args.venv_python, baseline, sites_and_sources)
 
-    # (b) rejection taxonomy
+    # (b) rejection taxonomy -- written to disk as well as printed, because
+    # the blog post and the rejection slide are downstream of these counts.
+    report = build_run_report(
+        repo=args.repo_dir.name,
+        commit_sha=baseline.commit_sha,
+        results=results,
+        candidates_generated=candidates_generated,
+        candidates_on_covered_lines=candidates_on_covered_lines,
+        stopwatch=watch,
+        baseline_cache_hit=baseline_cache_hit,
+        baseline_total_tests=baseline.total_tests,
+    )
+    report_path = write_run_report(report, args.output_dir)
     print("=== REJECTION TAXONOMY ===")
-    total = sum(taxonomy.values())
-    for outcome in sorted(taxonomy, key=lambda k: -taxonomy[k]):
-        print(f"  {outcome:<22} {taxonomy[outcome]:>4}  ({taxonomy[outcome] / total:.0%})")
-    print(f"  {'TOTAL':<22} {total:>4}\n")
+    print(format_taxonomy(report))
+    print()
 
     # (c) test-gap list
     gaps = [r for r in results if r.outcome == Outcome.TEST_GAP]
@@ -80,6 +104,7 @@ def main() -> None:
     print(f"=== ADMITTED CHALLENGES: {len(admitted)} ===\n")
     if not admitted:
         print("(none admitted in this run)")
+        print(f"run report: {report_path}")
         return
 
     best = admitted[0]
@@ -99,6 +124,7 @@ def main() -> None:
 
     print("\npackaging this challenge...")
     original_source = sources_by_file[best.site.path]
+    packaging_started = time.perf_counter()
     challenge = package_challenge(
         repo_dir=args.repo_dir,
         repo_name=args.repo_dir.name,
@@ -110,7 +136,11 @@ def main() -> None:
         output_dir=args.output_dir,
     )
     print(json.dumps(__import__("dataclasses").asdict(challenge), indent=2))
+    watch.record("packaging", time.perf_counter() - packaging_started)
+    report["timings_seconds"]["packaging"] = watch.stages["packaging"]
+    write_run_report(report, args.output_dir)
     print(f"\ntarballs + JSON written under {args.output_dir}/")
+    print(f"run report: {report_path}")
 
 
 if __name__ == "__main__":

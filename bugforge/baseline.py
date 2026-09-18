@@ -131,6 +131,17 @@ def _build_line_to_tests(repo_dir: Path) -> dict[str, list[str]]:
     return line_to_tests
 
 
+def is_cached(repo_dir: Path) -> bool:
+    """True if compute_baseline() would hit the cache for this repo at HEAD.
+
+    Callers that want to report whether the slow step actually ran have to ask
+    before calling, because compute_baseline() returns the same Baseline either
+    way.
+    """
+    repo_dir = repo_dir.resolve()
+    return _cache_path(repo_dir.name, _git_head_sha(repo_dir)).exists()
+
+
 def compute_baseline(repo_dir: Path, package: str, python: str, use_cache: bool = True) -> Baseline:
     """Runs the full suite with coverage contexts and builds the baseline.
 

@@ -12,20 +12,27 @@ import {
   type ChallengeDetail,
   type Submission,
 } from "@/lib/api";
+import { countLines, type Attempt } from "@/lib/attempt";
 import { Workspace, type FrameMark, type WorkspaceFile } from "@/lib/editor";
 import { clock, plural, repoDisplay, repoShort, slug, thousands } from "@/lib/format";
 import { buildPatch, editorText, isModified, isTestPath, pathProblem } from "@/lib/patch";
 import { markSolved, readLocal, writeLocal } from "@/lib/progress";
 import type { Visit } from "@/lib/replay";
-import { ancestorDirs, findTestLine, parseNodeId, tabLabels } from "@/lib/solve";
+import { ancestorDirs, enclosingScope, findTestLine, parseNodeId, tabLabels } from "@/lib/solve";
 import { gunzip, untar } from "@/lib/tar";
 import { parseTraceback, resolveFramePath, type Frame } from "@/lib/traceback";
 import { buildTree, toNodes, type ChallengeTree } from "@/lib/tree";
+import { useTheme } from "@/lib/theme";
 import { LABEL_COLOR } from "../ChallengeCard";
 import { Cursor } from "../Cursor";
 import { DifficultyBars } from "../DifficultyBars";
 import { SiteHeader } from "../Shell";
+import { ThemeToggle } from "../ThemeToggle";
+import { ActivityBar, type PanelId } from "../solve/ActivityBar";
+import { BottomPanel, type BottomTab } from "../solve/BottomPanel";
+import { Breadcrumbs } from "../solve/Breadcrumbs";
 import { FileTree } from "../solve/FileTree";
+import { Resizer } from "../solve/Resizer";
 import { Spine } from "../solve/Spine";
 
 // ---------------------------------------------------------------------------
@@ -111,38 +118,28 @@ function useBundle(id: string) {
 // submissions
 // ---------------------------------------------------------------------------
 
-interface Attempt {
-  n: number;
-  files: string[];
-  added: number;
-  removed: number;
-  sentAt: number;
-  submissionId: string | null;
-  state: "blocked" | "sending" | "grading" | "done" | "error";
-  message: string | null;
-  result: Submission | null;
-}
-
 const POLL_MS = 1500;
 /** matches fn_api.MAX_VISITS: anything longer is trimmed server-side anyway */
 const MAX_VISITS = 300;
-const SLOW_AFTER_MS = 75_000;
 const GIVE_UP_AFTER_MS = 5 * 60_000;
 
-function countLines(patch: string): { added: number; removed: number } {
-  let added = 0;
-  let removed = 0;
-  for (const line of patch.split("\n")) {
-    if (line.startsWith("+") && !line.startsWith("+++")) added++;
-    if (line.startsWith("-") && !line.startsWith("---")) removed++;
-  }
-  return { added, removed };
+// ---------------------------------------------------------------------------
+// layout
+// ---------------------------------------------------------------------------
+
+/** Panel widths, remembered per browser. The activity bar is fixed at 48px. */
+interface Layout {
+  side: number;
+  right: number;
 }
 
-const REJECTION: Record<string, string> = {
-  anti_cheat: "rejected before running: the patch breaks the rules",
-  patch_did_not_apply: "rejected: the patch did not apply to the challenge tree",
-};
+const LAYOUT_KEY = "bugforge:layout";
+const DEFAULT_LAYOUT: Layout = { side: 260, right: 300 };
+const SIDE_MIN = 180;
+const SIDE_MAX = 520;
+const RIGHT_MIN = 220;
+const RIGHT_MAX = 480;
+const BOTTOM_HEIGHT = 168;
 
 // ---------------------------------------------------------------------------
 // drafts
@@ -288,11 +285,17 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   );
   const [draftVersion, setDraftVersion] = useState(0);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [logOpen, setLogOpen] = useState(true);
+  const [panel, setPanel] = useState<PanelId | null>("trace");
+  const [layout, setLayout] = useState<Layout>(DEFAULT_LAYOUT);
+  const [bottomTab, setBottomTab] = useState<BottomTab>("problems");
+  const [bottomOpen, setBottomOpen] = useState(false);
+  const [cursorLine, setCursorLine] = useState(1);
+  const [reveal, setReveal] = useState<{ path: string; n: number } | undefined>(undefined);
   const [solvedAt, setSolvedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [flash, setFlash] = useState<string | null>(null);
   const [mac, setMac] = useState(true);
+  const [theme] = useTheme();
 
   const hostRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<Workspace | null>(null);
@@ -310,6 +313,25 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
 
   useEffect(() => {
     setMac(/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent));
+    const saved = readLocal<Layout>(LAYOUT_KEY);
+    if (saved) {
+      setLayout({
+        side: Math.max(SIDE_MIN, Math.min(SIDE_MAX, saved.side ?? DEFAULT_LAYOUT.side)),
+        right: Math.max(RIGHT_MIN, Math.min(RIGHT_MAX, saved.right ?? DEFAULT_LAYOUT.right)),
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    wsRef.current?.setDark(theme === "dark");
+  }, [theme]);
+
+  const resize = useCallback((next: Partial<Layout>) => {
+    setLayout((prev) => {
+      const merged = { ...prev, ...next };
+      writeLocal(LAYOUT_KEY, merged);
+      return merged;
+    });
   }, []);
 
   useEffect(() => {
@@ -467,11 +489,16 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const ws = new Workspace(host, (path) => {
-      pendingDocs.current.add(path);
-      clearTimeout(docTimer.current);
-      docTimer.current = setTimeout(flushDocs, 150);
-    });
+    const ws = new Workspace(
+      host,
+      (path) => {
+        pendingDocs.current.add(path);
+        clearTimeout(docTimer.current);
+        docTimer.current = setTimeout(flushDocs, 150);
+      },
+      setCursorLine,
+    );
+    ws.setDark(document.documentElement.getAttribute("data-theme") !== "light");
     wsRef.current = ws;
     ws.setVisited(initial.visited);
 
@@ -529,7 +556,8 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
       message: null,
       result: null,
     };
-    setLogOpen(true);
+    setBottomTab("output");
+    setBottomOpen(true);
 
     const problem = pathProblem(paths);
     if (problem) {
@@ -643,28 +671,163 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   const lastAttempt = attempts[attempts.length - 1];
   const statusName = `${repoShort(detail.repo)}/${slug(detail.title) || "challenge"}`;
 
+  // the breadcrumb's tail: the def/class the caret sits inside
+  const scope = useMemo(() => {
+    const text = active ? (wsRef.current?.text(active) ?? currentText(active)) : null;
+    return text && active?.endsWith(".py") ? enclosingScope(text, cursorLine) : [];
+    // draftVersion is in here so the crumb follows edits, not just the caret
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, cursorLine, currentText, draftVersion]);
+
+  const revealInTree = useCallback((path: string) => {
+    setPanel("files");
+    setExpanded((prev) => {
+      const needed = [...ancestorDirs([path]), path].filter((d) => !prev.has(d));
+      return needed.length ? new Set([...prev, ...needed]) : prev;
+    });
+    setReveal((r) => ({ path, n: (r?.n ?? 0) + 1 }));
+  }, []);
+
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh">
-      <SiteHeader />
+      {/* the breadcrumb row: a back affordance instead of a site nav */}
+      <header className="flex h-9 shrink-0 items-center gap-3 border-b border-line bg-chrome px-3 text-[11.5px]">
+        <Link
+          href={`/repo/?name=${encodeURIComponent(detail.repo)}`}
+          className="shrink-0 text-dim outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
+        >
+          &larr; {repoDisplay(detail.repo)} course
+        </Link>
+        <span aria-hidden className="h-4 w-px shrink-0 bg-line" />
+        <Breadcrumbs path={active} scope={scope} onReveal={revealInTree} />
+        <ThemeToggle className="ml-auto shrink-0" />
+      </header>
 
-      <div className="grid flex-1 grid-cols-1 lg:min-h-0 lg:grid-cols-[minmax(250px,300px)_minmax(0,1fr)_minmax(240px,290px)] xl:grid-cols-[320px_minmax(0,1fr)_310px]">
-        {/* LEFT: the spine */}
-        <aside className="max-h-[55vh] min-h-0 border-b border-line lg:max-h-none lg:border-r lg:border-b-0" aria-label="traceback">
-          <Spine frames={frames} resolved={resolved} visited={visited} activeFrame={activeFrame} onOpen={openFrame} />
-        </aside>
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+        <ActivityBar
+          active={panel}
+          onSelect={(next) => setPanel((prev) => (prev === next ? null : next))}
+          badges={{ tests: detail.failing_tests.length }}
+        />
 
-        {/* CENTER: tabs, editor, submissions */}
-        <section className="flex h-[75vh] min-h-0 min-w-0 flex-col lg:h-auto" aria-label="editor">
-          <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-panel">
+        {/* SIDE: whichever panel the activity bar selected */}
+        {panel !== null && (
+          <aside
+            className="flex max-h-[45vh] min-h-0 shrink-0 flex-col border-b border-line lg:max-h-none lg:border-b-0"
+            style={{ width: layout.side, maxWidth: "100%" }}
+            aria-label={panel}
+          >
+            {panel === "trace" && (
+              <Spine frames={frames} resolved={resolved} visited={visited} activeFrame={activeFrame} onOpen={openFrame} />
+            )}
+            {panel === "files" && (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <h2 className="label shrink-0 border-b border-line px-3 py-2">
+                  files <span className="normal-case tracking-normal">&middot; {thousands(tree.files.size)}</span>
+                </h2>
+                <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+                  <FileTree
+                    nodes={nodes}
+                    expanded={expanded}
+                    reveal={reveal}
+                    onToggle={(dir) =>
+                      setExpanded((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(dir)) next.delete(dir);
+                        else next.add(dir);
+                        return next;
+                      })
+                    }
+                    onOpen={(path) => open(path)}
+                    marks={{ active, open: new Set(tabs), modified, traced, binary }}
+                  />
+                </div>
+              </div>
+            )}
+            {panel === "tests" && (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <h2 className="label shrink-0 border-b border-line px-3 py-2">
+                  failing &middot; {detail.failing_tests.length} of {thousands(detail.total_tests)}
+                </h2>
+                <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
+                  {detail.failing_tests.map((nodeId) => {
+                    const { path, names } = parseNodeId(nodeId);
+                    return (
+                      <li key={nodeId}>
+                        <button
+                          type="button"
+                          onClick={() => openTest(nodeId)}
+                          title={`open ${nodeId}`}
+                          className="group block w-full text-left text-[11.5px] leading-[1.45] outline-none"
+                        >
+                          <span className="flex gap-1.5">
+                            <span className="text-error">&#10007;</span>
+                            <span className="min-w-0 break-all text-text group-hover:underline group-focus-visible:underline">
+                              {names[names.length - 1] ?? path}
+                            </span>
+                          </span>
+                          <span className="block truncate pl-[2.2ch] text-[10.5px] text-dim">
+                            {[...names.slice(0, -1), path.split("/").pop()].join(" · ")}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+            {panel === "brief" && (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <h2 className="label border-b border-line px-3 py-2">the brief</h2>
+                <div className="px-3 py-3">
+                  <h3 className="text-[15px] font-bold leading-snug text-text">{detail.title}</h3>
+                  <p className="mt-2 text-[12px] leading-[1.6] text-text/90">{detail.description}</p>
+                  <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
+                    <dt className="text-dim">repo</dt>
+                    <dd className="truncate text-text">{repoDisplay(detail.repo)}</dd>
+                    <dt className="text-dim">licence</dt>
+                    <dd className="truncate text-text">{detail.license || "—"}</dd>
+                    <dt className="text-dim">language</dt>
+                    <dd className="text-text">{detail.language.toLowerCase()}</dd>
+                    <dt className="text-dim">suite</dt>
+                    <dd className="text-text">{thousands(detail.total_tests)} tests</dd>
+                  </dl>
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
+        {panel !== null && (
+          <Resizer
+            label="resize the side panel"
+            side="left"
+            width={layout.side}
+            min={SIDE_MIN}
+            max={SIDE_MAX}
+            onResize={(side) => resize({ side })}
+          />
+        )}
+
+        {/* CENTER: tabs, editor, bottom dock */}
+        <section className="flex h-[72vh] min-h-0 min-w-0 flex-1 flex-col lg:h-auto" aria-label="editor">
+          <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-chrome">
             <div role="tablist" aria-label="open files" className="flex min-w-0 flex-1 overflow-x-auto">
               {tabs.map((path) => {
                 const label = labels.get(path)!;
                 const isActive = path === active;
+                const isDirty = modified.has(path);
                 return (
                   <div
                     key={path}
-                    className={`group flex shrink-0 items-stretch border-r border-line ${
-                      isActive ? "bg-base text-text" : "text-dim hover:text-text"
+                    onAuxClick={(e) => {
+                      // middle click closes, the way every editor does
+                      if (e.button === 1) {
+                        e.preventDefault();
+                        closeTab(path);
+                      }
+                    }}
+                    className={`group flex shrink-0 items-stretch border-r border-line transition-colors duration-[120ms] ${
+                      isActive ? "bg-base text-text" : "bg-chrome text-dim hover:bg-hover hover:text-text"
                     }`}
                   >
                     <button
@@ -673,11 +836,11 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                       aria-selected={isActive}
                       title={path}
                       onClick={() => open(path)}
-                      className={`flex items-center gap-1.5 border-t pl-3 pr-1 text-[12px] outline-none transition-colors duration-[120ms] ${
-                        isActive ? "border-text" : "border-transparent"
+                      className={`flex items-center gap-1.5 border-t-2 pr-1 pl-3 text-[12px] outline-none transition-colors duration-[120ms] ${
+                        isActive ? "border-causal" : "border-transparent"
                       }`}
                     >
-                      {traced.has(path) && <span aria-hidden className="block h-[5px] w-[5px] bg-causal" />}
+                      {traced.has(path) && <span aria-hidden className="block h-[5px] w-[5px] shrink-0 bg-causal" />}
                       <span>{label.name}</span>
                       {label.hint && <span className="text-[10.5px] text-dim">{label.hint}</span>}
                     </button>
@@ -685,17 +848,22 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                       type="button"
                       onClick={() => closeTab(path)}
                       aria-label={`close ${path}`}
-                      className={`flex w-6 items-center justify-center border-t border-transparent text-[13px] outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text ${
-                        isActive ? "border-text" : ""
+                      className={`flex w-6 items-center justify-center border-t-2 text-[13px] outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text ${
+                        isActive ? "border-causal" : "border-transparent"
                       }`}
                     >
-                      {modified.has(path) ? (
+                      {/* a dot for unsaved changes; the close X takes over on hover */}
+                      {isDirty ? (
                         <>
-                          <span className="text-error group-hover:hidden" aria-label="modified">●</span>
-                          <span className="hidden group-hover:inline">×</span>
+                          <span className="text-error group-hover:hidden" aria-label="modified">
+                            &#9679;
+                          </span>
+                          <span className="hidden group-hover:inline">&times;</span>
                         </>
                       ) : (
-                        "×"
+                        <span className="opacity-0 transition-opacity duration-[120ms] group-hover:opacity-100 group-focus-within:opacity-100">
+                          &times;
+                        </span>
                       )}
                     </button>
                   </div>
@@ -703,7 +871,9 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
               })}
             </div>
             <div className="flex shrink-0 items-center gap-3 px-3 text-[11px] text-dim">
-              {activeReadOnly && <span title="test files and non-Python files can't be patched">read-only · the suite is the judge</span>}
+              {activeReadOnly && (
+                <span title="test files and non-Python files can't be patched">read-only &middot; the suite is the judge</span>
+              )}
               {active && modified.has(active) && (
                 <button type="button" onClick={() => revert(active)} className="link text-dim hover:text-text">
                   revert file
@@ -725,63 +895,44 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
             )}
           </div>
 
-          {attempts.length > 0 && (
-            <SubmitLog
-              attempts={attempts}
-              open={logOpen}
-              onToggle={() => setLogOpen((o) => !o)}
-              onOpenTest={openTest}
-              now={now}
-            />
-          )}
+          <BottomPanel
+            tab={bottomTab}
+            onTab={setBottomTab}
+            open={bottomOpen}
+            onToggle={() => setBottomOpen((o) => !o)}
+            failingTests={detail.failing_tests}
+            onOpenTest={openTest}
+            attempts={attempts}
+            now={now}
+            height={BOTTOM_HEIGHT}
+          />
         </section>
 
-        {/* RIGHT: brief, timer, files */}
-        <aside className="flex min-h-0 flex-col border-t border-line lg:border-t-0 lg:border-l" aria-label="challenge">
+        <Resizer
+          label="resize the detail panel"
+          side="right"
+          width={layout.right}
+          min={RIGHT_MIN}
+          max={RIGHT_MAX}
+          onResize={(right) => resize({ right })}
+        />
+
+        {/* RIGHT: what stays put -- difficulty, the clock, the keys */}
+        <aside
+          className="flex min-h-0 shrink-0 flex-col border-t border-line lg:border-t-0 lg:border-l"
+          style={{ width: layout.right, maxWidth: "100%" }}
+          aria-label="challenge"
+        >
           <div className="shrink-0 border-b border-line px-4 pt-3 pb-4">
-            <Link href={`/repo/?name=${encodeURIComponent(detail.repo)}`} className="text-[11px] text-dim transition-colors duration-[120ms] hover:text-text">
-              ← {repoDisplay(detail.repo)} course
-            </Link>
-            <div className="mt-3 flex items-start justify-between gap-3">
+            <div className="flex items-start justify-between gap-3">
               <p className="label">
                 <span className={LABEL_COLOR[detail.difficulty_label]}>{detail.difficulty_label}</span>
-                <span className="text-dim"> · {detail.language.toLowerCase()}</span>
+                <span className="text-dim"> &middot; {detail.language.toLowerCase()}</span>
               </p>
               <DifficultyBars breakdown={detail.breakdown} failing={detail.failing_test_count} total={detail.total_tests} />
             </div>
             <h1 className="mt-1 text-[16px] font-bold leading-snug text-text">{detail.title}</h1>
             <p className="mt-2 text-[12px] leading-[1.6] text-text/90">{detail.description}</p>
-          </div>
-
-          <div className="shrink-0 border-b border-line px-4 py-3">
-            <h2 className="label">
-              failing · {detail.failing_tests.length} of {thousands(detail.total_tests)}
-            </h2>
-            <ul className="mt-2 max-h-[132px] space-y-1 overflow-y-auto">
-              {detail.failing_tests.map((nodeId) => {
-                const { path, names } = parseNodeId(nodeId);
-                return (
-                  <li key={nodeId}>
-                    <button
-                      type="button"
-                      onClick={() => openTest(nodeId)}
-                      title={`open ${nodeId}`}
-                      className="group block w-full text-left text-[11.5px] leading-[1.45] outline-none"
-                    >
-                      <span className="flex gap-1.5">
-                        <span className="text-error">✗</span>
-                        <span className="min-w-0 break-all text-text group-hover:underline group-focus-visible:underline">
-                          {names[names.length - 1] ?? path}
-                        </span>
-                      </span>
-                      <span className="block truncate pl-[2.2ch] text-[10.5px] text-dim">
-                        {[...names.slice(0, -1), path.split("/").pop()].join(" · ")}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
           </div>
 
           <div className="flex shrink-0 items-end justify-between gap-3 border-b border-line px-4 py-3">
@@ -796,7 +947,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
               </p>
             </div>
             <dl className="grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-[10.5px] text-dim">
-              <dt className="text-right text-text">{mod}↵</dt>
+              <dt className="text-right text-text">{mod}&crarr;</dt>
               <dd>submit</dd>
               <dt className="text-right text-text">
                 {alt}[ {alt}]
@@ -809,52 +960,42 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
             </dl>
           </div>
 
-          <div className="flex min-h-[240px] flex-1 flex-col lg:min-h-0">
-            <h2 className="label shrink-0 px-4 pt-3 pb-1">
-              files <span className="normal-case tracking-normal">· {thousands(tree.files.size)}</span>
-            </h2>
-            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-              <FileTree
-                nodes={nodes}
-                expanded={expanded}
-                onToggle={(dir) =>
-                  setExpanded((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(dir)) next.delete(dir);
-                    else next.add(dir);
-                    return next;
-                  })
-                }
-                onOpen={(path) => open(path)}
-                marks={{ active, open: new Set(tabs), modified, traced, binary }}
-              />
-            </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+            <h2 className="label">where you are</h2>
+            <p className="mt-2 text-[11.5px] leading-[1.6] text-dim">
+              {visited.size} of {resolved.filter(Boolean).length} frames visited &middot; {plural(tabs.length, "file")} open
+              {modified.size > 0 && <> &middot; {modified.size} modified</>}
+            </p>
+            <p className="mt-3 text-[11px] leading-[1.6] text-dim">
+              the trace shows where it failed, not where it broke. the amber row is where it raised; the violet gutter
+              marks are the frames above it.
+            </p>
           </div>
         </aside>
       </div>
 
-      {/* BOTTOM: status bar */}
+      {/* BOTTOM: the status strip, one line, unchanged */}
       <footer className="sticky bottom-0 z-20 flex h-7 shrink-0 items-center justify-between gap-4 border-t border-line bg-panel px-3 text-[11px] tabular-nums text-dim">
         <p className="flex min-w-0 items-center gap-2 truncate">
           <span className="text-text">{statusName}</span>
-          <span>·</span>
+          <span>&middot;</span>
           <span className={solvedAt ? "text-success" : "text-text"}>{clock(elapsed)}</span>
-          <span>·</span>
+          <span>&middot;</span>
           <span>{plural(tabs.length, "file")} open</span>
           {modified.size > 0 && (
             <>
-              <span>·</span>
+              <span>&middot;</span>
               <span className="text-error">{modified.size} modified</span>
             </>
           )}
-          <span>·</span>
+          <span>&middot;</span>
           <button
             type="button"
             onClick={submit}
             disabled={grading || solvedAt !== null}
             className="text-text transition-colors duration-[120ms] hover:text-success disabled:text-dim"
           >
-            {mod}↵ submit
+            {mod}&crarr; submit
           </button>
         </p>
         <p className="shrink-0 truncate" aria-live="polite">
@@ -874,7 +1015,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
 }
 
 // ---------------------------------------------------------------------------
-// submission log
+// status strip summary
 // ---------------------------------------------------------------------------
 
 function AttemptSummary({ attempt, now }: { attempt: Attempt; now: number }) {
@@ -892,104 +1033,3 @@ function AttemptSummary({ attempt, now }: { attempt: Attempt; now: number }) {
   return <span className="text-error">REJECTED · {r.reason}</span>;
 }
 
-function SubmitLog({
-  attempts,
-  open,
-  onToggle,
-  onOpenTest,
-  now,
-}: {
-  attempts: Attempt[];
-  open: boolean;
-  onToggle: () => void;
-  onOpenTest: (nodeId: string) => void;
-  now: number;
-}) {
-  const bodyRef = useRef<HTMLDivElement>(null);
-  const last = attempts[attempts.length - 1];
-
-  useEffect(() => {
-    const el = bodyRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [attempts, open]);
-
-  return (
-    <div className="flex max-h-[40%] shrink-0 flex-col border-t border-line bg-panel">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex h-7 shrink-0 items-center justify-between px-3 text-[11px] text-dim outline-none hover:text-text focus-visible:text-text"
-      >
-        <span className="label !text-inherit">submissions · {attempts.length}</span>
-        <span aria-hidden>{open ? "▾" : "▴"}</span>
-      </button>
-      {open && (
-        <div ref={bodyRef} role="log" aria-live="polite" className="min-h-0 overflow-y-auto px-3 pb-3 text-[12px] leading-[1.7]">
-          {attempts.slice(-4).map((a) => (
-            <div key={a.n} className={`animate-fade ${a === last ? "" : "opacity-60"} ${a.n > 1 ? "mt-2" : ""}`}>
-              <div className="whitespace-pre-wrap text-text">
-                $ submit #{a.n}
-                {a.files.length > 0 && (
-                  <span className="text-dim">
-                    {" "}
-                    · {a.files.join(", ")} · <span className="text-success">+{a.added}</span>{" "}
-                    <span className="text-error">−{a.removed}</span>
-                  </span>
-                )}
-              </div>
-
-              {a.state === "blocked" && <div className="text-error">✗ {a.message}</div>}
-              {a.state === "error" && <div className="text-error">✗ {a.message}</div>}
-              {a.state === "sending" && <div className="text-dim">· sending</div>}
-              {(a.state === "grading" || a.state === "done") && (
-                <div className="text-dim">· {a.submissionId} · patch applied in a clean tree, full suite running</div>
-              )}
-              {a.state === "grading" && (
-                <div className="text-dim">
-                  · {clock(now - a.sentAt)}
-                  {now - a.sentAt > SLOW_AFTER_MS && " · slower than usual, still waiting"} <Cursor className="!h-[0.9em] !w-[0.45em]" />
-                </div>
-              )}
-
-              {a.result?.verdict === "PASS" && (
-                <div className="font-bold text-success">
-                  ✓ PASS — {thousands(a.result.tests_passed ?? 0)} tests green · opening the reveal…
-                </div>
-              )}
-              {a.result?.verdict === "FAIL" && (
-                <>
-                  <div className="text-error">
-                    ✗ FAIL — {a.result.reason ?? `${plural(a.result.failing_tests?.length ?? 0, "test")} still red`}
-                    {a.result.tests_passed !== undefined && (
-                      <span className="text-dim"> · {thousands(a.result.tests_passed)} passed</span>
-                    )}
-                  </div>
-                  {(a.result.failing_tests ?? []).slice(0, 12).map((t) => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => onOpenTest(t)}
-                      className="block max-w-full truncate pl-4 text-left text-dim hover:text-text"
-                    >
-                      {t}
-                    </button>
-                  ))}
-                  {(a.result.failing_tests?.length ?? 0) > 12 && (
-                    <div className="pl-4 text-dim">+{(a.result.failing_tests?.length ?? 0) - 12} more</div>
-                  )}
-                </>
-              )}
-              {a.result?.verdict === "REJECTED" && (
-                <>
-                  <div className="text-error">✗ {REJECTION[a.result.reason ?? ""] ?? `rejected: ${a.result.reason}`}</div>
-                  {a.result.detail && <div className="whitespace-pre-wrap pl-4 text-dim">{a.result.detail.slice(0, 600)}</div>}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

@@ -1,0 +1,16 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L81",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/asyncio/retry.py",
+  "lineno": 81,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/asyncio/retry.py\n+++ b/tenacity/asyncio/retry.py\n@@ -78,7 +78,7 @@\n             exception = retry_state.outcome.exception()\n             if exception is None:\n                 raise RuntimeError(\"outcome failed but the exception is None\")\n-            return await self.predicate(exception)\n+            return None\n         return False\n \n \n",
+  "failing_tests": [
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_exc",
+    "tests/test_asyncio.py::TestContextManager::test_retry_with_async_result_ror"
+  ],
+  "difficulty_score": 6.794672131147541,
+  "title": "Return in retry_if_exception:81",
+  "description": "test_retry_with_async_exc raised CustomException."
+}

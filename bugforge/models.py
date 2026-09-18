@@ -35,6 +35,10 @@ class MutationSite:
     original_token: str
     mutated_token: str
     enclosing_function_name: str | None
+    # Title copy only. A dunder ("__call__") names nothing a learner can
+    # recognise, and tenacity puts most of its logic in __call__ methods of
+    # differently-named classes, so the class is the distinguishing part.
+    enclosing_class_name: str | None = None
 
 
 @dataclass

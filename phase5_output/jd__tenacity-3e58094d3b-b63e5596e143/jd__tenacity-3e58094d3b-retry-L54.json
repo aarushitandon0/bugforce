@@ -1,0 +1,15 @@
+{
+  "id": "jd__tenacity-3e58094d3b-retry-L54",
+  "repo": "jd__tenacity",
+  "commit_sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
+  "file_path": "tenacity/retry.py",
+  "lineno": 54,
+  "mutator_name": "RETURN",
+  "diff": "--- a/tenacity/retry.py\n+++ b/tenacity/retry.py\n@@ -51,7 +51,7 @@\n         # Plain callable: flatten if self is already a retry_any\n         if isinstance(self, retry_any):\n             return retry_any(*self.retries, other)\n-        return retry_any(self, other)\n+        return None\n \n     def __ror__(self, other: \"RetryBaseT\") -> \"retry_any\":\n         # Flatten if other is already a retry_any\n",
+  "failing_tests": [
+    "tests/test_tenacity.py::TestRetryConditions::test_retry_or_with_plain_function"
+  ],
+  "difficulty_score": 6.2723360655737705,
+  "title": "Return in retry_base:54",
+  "description": "test_retry_or_with_plain_function raised TypeError."
+}

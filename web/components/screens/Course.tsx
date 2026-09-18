@@ -75,10 +75,10 @@ export function Course() {
 
           {list.length === 0 && <p className="py-6 text-dim">no challenges for {repoDisplay(repo)} yet.</p>}
 
-          <ol className="mt-4 grid gap-3 md:grid-cols-2">
+          <ol className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             {shown.map((card) => (
-              <li key={card.challenge_id} className="relative flex">
-                <div className="flex-1">
+              <li key={card.challenge_id} className="relative flex min-w-0">
+                <div className="min-w-0 flex-1">
                   <ChallengeCard
                     card={card}
                     index={list.indexOf(card) + 1}

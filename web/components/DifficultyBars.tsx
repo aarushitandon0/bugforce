@@ -58,7 +58,7 @@ export function DifficultyBars({
   const tall = size === "lg";
 
   return (
-    <div className={`flex items-end ${tall ? "gap-4" : "gap-[6px]"}`}>
+    <div className={`flex items-end ${tall ? "gap-3" : "gap-[6px]"}`}>
       {METRICS.map((metric) => {
         const fill = Math.max(0, Math.min(1, metric.fill(breakdown)));
         const value = metric.value(breakdown, failing, total);
@@ -73,14 +73,28 @@ export function DifficultyBars({
                   {metric.name} <span className="text-dim">·</span> {value}
                 </span>
                 <span className="mt-1 block text-dim">{metric.explain}</span>
+                <span className="mt-1.5 block text-dim">
+                  this bar: {Math.round(fill * 100)}% of the hardest this input gets
+                </span>
               </>
             }
           >
             <span className="flex flex-col items-center gap-1">
-              <span className={`relative block border border-line ${tall ? "h-10 w-[9px]" : "h-7 w-[7px]"}`}>
+              <span className={`relative block border border-line ${tall ? "h-[52px] w-[14px]" : "h-7 w-[7px]"}`}>
                 <span className="absolute inset-x-0 bottom-0 bg-text" style={{ height: `${fill * 100}%` }} />
               </span>
-              <span className="text-[9px] leading-none text-dim">{tall ? metric.name.split(" ")[0] : metric.short}</span>
+              {/* the full word needs ~54px a bar; below sm that overflows a card,
+                  so the short letter stands in and the tooltip carries the name */}
+              <span className={`leading-none text-dim ${tall ? "text-[10px]" : "text-[9px]"}`}>
+                {tall ? (
+                  <>
+                    <span className="hidden sm:inline">{metric.name.split(" ")[0]}</span>
+                    <span className="sm:hidden">{metric.short}</span>
+                  </>
+                ) : (
+                  metric.short
+                )}
+              </span>
             </span>
           </Tip>
         );

@@ -227,13 +227,11 @@ Generation is a **batch job**. Nothing generative runs when a judge clicks anyth
  gap reports
  leaderboard
 
-   Amplify (Next.js) ─▶ API Gateway ─▶ Lambda
+   Amplify (Next.js) ─▶ API Gateway (HTTP API) ─▶ Lambda
                                         ├ list/get challenge  (DDB read)
                                         ├ presign public tree
                                         ├ grade submission    (ECR image)
                                         └ forge request       (start SFN)
-   Cognito ── GitHub login
-   EventBridge ── nightly re-forge of tracked repos
 ```
 
 **Every service justified, none for the checklist:**
@@ -244,11 +242,9 @@ Generation is a **batch job**. Nothing generative runs when a judge clicks anyth
 | **Step Functions** | Fan-out over mutation batches with per-item failure tolerance. Most candidates legitimately fail — set a high `ToleratedFailurePercentage` and keep survivors. This is what Map states are for. |
 | **DynamoDB** | On-demand. Challenges, submissions, gap reports, leaderboard. |
 | **S3** | Two prefixes, **separate IAM principals**. The answers prefix is never presigned to a browser. |
-| **API Gateway** | REST surface. |
+| **API Gateway (HTTP API)** | The HTTP surface the frontend calls. HTTP API, not REST API — same job here, materially cheaper per request. |
 | **Amplify Hosting** | Next.js frontend, the live URL. |
-| **Cognito** | GitHub login, progress tracking. |
 | **Bedrock** | Two sentences of prose per challenge, with a template fallback. |
-| **EventBridge** | Scheduled re-forge so tracked repos stay fresh against new commits. |
 
 **Cost decisions, which are explicitly part of the Ship It score — say these on camera:**
 
@@ -257,6 +253,9 @@ Generation is a **batch job**. Nothing generative runs when a judge clicks anyth
 - Mutations are batched 15 per invocation so the clone and dependency load amortise.
 - Bedrock is one short call per *admitted* challenge, not per candidate — roughly a 1-in-8 ratio after filtering.
 - Grading is one short Lambda invocation with no idle capacity.
+- The API is an **HTTP API, not a REST API** — roughly a third of the per-request
+  cost, and none of the REST-only features (request validators, usage plans,
+  API keys) are used here.
 
 **Security, also worth saying on camera:** the learner's patch executes in a Lambda with no network, no credentials, and a hard timeout. You are running untrusted code from the internet and you have an actual answer for it.
 
@@ -392,7 +391,7 @@ This is scored and it wants specifics. Write the honest version:
 - First production AWS deployment under a deadline.
 - First Step Functions Map state — and specifically, learning that `ToleratedFailurePercentage` exists, because in this pipeline most branches are *supposed* to fail.
 - First Lambda container images from ECR, after discovering that runtime dependency installation is unworkable.
-- First time writing an IAM policy whose job is to make "this function can do nothing except read one object and write one object" actually true, in order to safely run untrusted code.
+- First time writing an IAM policy whose job is to make a narrow claim about a function actually true, in order to safely run untrusted code. Grading has exactly one S3 permission in the entire stack: `GetObject` on `public/*`. It cannot read the answers prefix, cannot write to S3 at all, and cannot even list the bucket — so it cannot discover a key it wasn't handed. There is no answer key to consult: the repo's own suite is the oracle.
 - The `ast.unparse` discovery: the obvious approach destroys the file, and the fix was to use the AST only for locating and do surgical text edits.
 
 Name what fought back. That reads as real and it scores.

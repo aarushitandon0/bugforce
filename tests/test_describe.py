@@ -50,6 +50,7 @@ SITE = MutationSite(
     original_token=">=",
     mutated_token=">",
     enclosing_function_name="__call__",
+    enclosing_class_name="stop_after_attempt",
 )
 
 TEST_ID = "tests/test_tenacity.py::TestStopConditions::test_stop_after_attempt"
@@ -196,7 +197,9 @@ def test_fallback_is_deterministic_for_every_operator():
         first = fallback_description(_input(operator_id=op))
         second = fallback_description(_input(operator_id=op))
         assert first == second
-        assert first.title.endswith(" in stop")
+        # __call__ names nothing on its own, so the title falls back to the
+        # class that owns it.
+        assert first.title.endswith(" in stop_after_attempt")
 
 
 # --------------------------------------------------------------------------
@@ -385,6 +388,6 @@ def test_handler_describes_admitted_records_with_bedrock_disabled(tmp_path, monk
 
     assert (result["bedrock_count"], result["template_count"]) == (0, 1)
     admitted, dropped = store[result["described_key"]]["scored"]
-    assert admitted["title"] == "Comparison in stop"
+    assert admitted["title"] == "Comparison in stop_after_attempt"
     assert admitted["description"] == "test_stop_after_attempt expected True, got False."
     assert "title" not in dropped

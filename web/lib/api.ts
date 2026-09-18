@@ -145,6 +145,13 @@ export interface ChallengeCard {
   breakdown: Breakdown | null;
   failing_test_count: number;
   total_tests: number;
+  /**
+   * The mutation operator (RETURN, BOUNDARY, NEGATION, ...), when the API
+   * sends it. Optional because cloud/handlers/fn_persist.py deliberately keeps
+   * answer-bearing fields out of the challenges table, so a deployed stack does
+   * not have it yet; the card just leaves the tag off when it is missing.
+   */
+  operator?: string;
 }
 
 export interface ChallengeDetail extends ChallengeCard {

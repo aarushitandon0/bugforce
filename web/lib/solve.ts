@@ -68,3 +68,57 @@ export function ancestorDirs(paths: Iterable<string>): Set<string> {
   }
   return dirs;
 }
+
+/**
+ * The `def`/`class` enclosing a 1-based line, for the breadcrumb.
+ *
+ * Walks upward for the nearest header at strictly smaller indentation than the
+ * line itself, then keeps walking for its own parents, so a method inside a
+ * class comes back as ["Retrying", "_run_retry"]. Blank lines and comments are
+ * skipped: their indentation says nothing about the block they sit in.
+ */
+export function enclosingScope(source: string, line: number): string[] {
+  const lines = source.replace(/\r\n?/g, "\n").split("\n");
+  if (line < 1 || line > lines.length) return [];
+
+  const indentOf = (text: string) => /^[ \t]*/.exec(text)![0].replace(/\t/g, "    ").length;
+  const header = /^[ \t]*(?:async\s+def|def|class)\s+([A-Za-z_][A-Za-z0-9_]*)/;
+
+  // Where the cursor sits. A blank or comment-only line takes the indentation
+  // of the next real line, so a cursor parked on a blank line inside a body
+  // still reports that body.
+  let own: number | null = null;
+  for (let i = line - 1; i < lines.length; i++) {
+    if (lines[i].trim() !== "" && !lines[i].trim().startsWith("#")) {
+      own = indentOf(lines[i]);
+      break;
+    }
+  }
+  if (own === null) return [];
+
+  // A cursor on the header line itself belongs to that header, not its parent.
+  const onHeader = header.exec(lines[line - 1] ?? "");
+  const names: string[] = [];
+  let limit = own;
+  if (onHeader) {
+    names.push(onHeader[1]);
+    limit = indentOf(lines[line - 1]);
+  }
+
+  for (let i = line - (onHeader ? 2 : 1); i >= 0; i--) {
+    const text = lines[i];
+    if (text.trim() === "" || text.trim().startsWith("#")) continue;
+    const indent = indentOf(text);
+    if (indent >= limit) continue;
+    const match = header.exec(text);
+    if (match) {
+      names.unshift(match[1]);
+      limit = indent;
+      if (indent === 0) break;
+    } else {
+      // A non-header at lower indentation closes the block we were in.
+      limit = indent;
+    }
+  }
+  return names;
+}

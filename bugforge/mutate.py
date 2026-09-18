@@ -75,6 +75,15 @@ def _enclosing_function_name(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> 
     return None
 
 
+def _enclosing_class_name(node: ast.AST, parents: dict[ast.AST, ast.AST]) -> str | None:
+    cur = node
+    while cur in parents:
+        cur = parents[cur]
+        if isinstance(cur, ast.ClassDef):
+            return cur.name
+    return None
+
+
 def _type_checking_line_ranges(tree: ast.AST) -> list[tuple[int, int]]:
     ranges = []
     for node in ast.walk(tree):
@@ -107,6 +116,9 @@ class _Context:
     def enclosing_function_name(self, node: ast.AST) -> str | None:
         return _enclosing_function_name(node, self.parents)
 
+    def enclosing_class_name(self, node: ast.AST) -> str | None:
+        return _enclosing_class_name(node, self.parents)
+
     def skip(self, node: ast.AST) -> bool:
         if _in_type_checking(node.lineno, self.type_checking_ranges):
             return True
@@ -136,6 +148,7 @@ class _Context:
             original_token=original_token,
             mutated_token=mutated_token,
             enclosing_function_name=self.enclosing_function_name(node_for_skip_check),
+            enclosing_class_name=self.enclosing_class_name(node_for_skip_check),
         )
 
 
