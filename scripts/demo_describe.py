@@ -32,7 +32,8 @@ from pathlib import Path
 
 from bugforge.baseline import compute_baseline, is_cached
 from bugforge.models import MutationSite
-from bugforge.mutate import MutationError, apply, find_candidates
+from bugforge.languages import get_adapter
+from bugforge.mutate import MutationError
 from bugforge.package import package_challenge
 from bugforge.run_report import Stopwatch, build_run_report, format_taxonomy, write_run_report
 from bugforge.select import ClassificationResult, Outcome, ScoreBreakdown, run_selection
@@ -40,20 +41,24 @@ from cloud import describe as describe_module
 from cloud.ids import challenge_id
 
 
+# Python is the only registered adapter today; see bugforge/languages/.
+adapter = get_adapter()
+
+
 def _run_selection(repo_dir: Path, package: str, python: str, baseline, watch: Stopwatch) -> tuple[list[dict], dict]:
     pairs = []
     candidates_generated = 0
     generate_started = time.perf_counter()
-    for py_file in sorted((repo_dir / package).rglob("*.py")):
+    for py_file in adapter.discover_sources(repo_dir / package):
         rel = str(py_file.relative_to(repo_dir)).replace("\\", "/")
         source = py_file.read_text(encoding="utf-8")
-        sites = find_candidates(source, rel)
+        sites = adapter.find_candidates(source, rel)
         candidates_generated += len(sites)
         for site in sites:
             if not baseline.tests_for_line(site.path, site.lineno):
                 continue
             try:
-                pairs.append((site, apply(source, site)))
+                pairs.append((site, adapter.apply(source, site)))
             except MutationError:
                 continue
     watch.record("generate_candidates", time.perf_counter() - generate_started)
@@ -256,7 +261,7 @@ def main() -> None:
             commit_sha=baseline.commit_sha,
             site=site,
             original_source=source,
-            mutated_source=apply(source, site),
+            mutated_source=adapter.apply(source, site),
             classification=result,
             output_dir=args.output_dir / cid,
             title=title,

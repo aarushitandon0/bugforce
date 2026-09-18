@@ -29,6 +29,30 @@ Parameters:
     Description: >
       Origin allowed to call the API and fetch presigned trees (CORS). Set it to
       the Amplify URL, e.g. https://main.d1234abcd.amplifyapp.com, once known.
+  GitHubClientId:
+    Type: String
+    Default: ""
+    Description: >
+      OAuth app client id. Public by nature, but stored in Secrets Manager
+      alongside the secret so both legs of the flow read from one place.
+    NoEcho: false
+  GitHubClientSecret:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >
+      OAuth app client secret. Readable ONLY by fn_auth's role -- it can
+      impersonate the whole application to GitHub. Leave empty to deploy with
+      sign-in disabled; every route except POST /submissions still works.
+  OAuthRedirectUri:
+    Type: String
+    Default: ""
+    Description: >
+      The literal callback URL registered on the GitHub OAuth app, e.g.
+      https://abc123.execute-api.us-east-1.amazonaws.com/auth/callback. GitHub
+      compares it on both legs, so it is configured, never derived from the
+      request (whose Host header a caller controls).
+
   DisableBedrock:
     Type: String
     Default: "false"
@@ -55,12 +79,19 @@ Globals:
         TABLE_SUBMISSIONS: !Ref SubmissionsTable
         TABLE_GAPS: !Ref GapReportsTable
         TABLE_LEADERBOARD: !Ref LeaderboardTable
+        TABLE_PROGRESS: !Ref ProgressTable
+        WEB_ORIGIN: !Ref WebOrigin
   HttpApi:
     # The frontend is a static site on a different origin (Amplify).
     CorsConfiguration:
       AllowOrigins: [!Ref WebOrigin]
       AllowMethods: [GET, POST, OPTIONS]
       AllowHeaders: [content-type]
+      # The session cookie is cross-site (Amplify -> execute-api), so the
+      # browser only sends it when credentials are allowed. Note that
+      # AllowCredentials is incompatible with AllowOrigins: ["*"] by spec --
+      # deploying sign-in REQUIRES a real WebOrigin.
+      AllowCredentials: true
       MaxAge: 600
 
 Resources:
@@ -141,6 +172,25 @@ Resources:
               KeyType: HASH
           Projection:
             ProjectionType: ALL
+
+  ProgressTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: challenge_id
+          AttributeType: S
+      # One row per challenge a user has solved. The range key is what makes
+      # the first-solve-only condition in cloud/progress.py possible, and that
+      # condition is what keeps the leaderboard from being farmable by
+      # resubmitting the same accepted fix.
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: challenge_id
+          KeyType: RANGE
 
   LeaderboardTable:
     Type: AWS::DynamoDB::Table

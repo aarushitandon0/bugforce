@@ -16,6 +16,12 @@ itself; this function only relays its answer.
 GET /forge/{id} is the live generation stream. It shows every classified
 mutation, rejects included -- but a mutation that is (or may become) a
 challenge is shown with its location masked, because the stream is public.
+
+Identity comes from the session cookie and from nowhere else. POST
+/submissions requires one; every other route stays open, because browsing
+repos, challenges and the gap report needs no account. The user id is read
+off the verified session, never off the request body -- a body-supplied id
+would let anyone write to anyone else's leaderboard row.
 """
 from __future__ import annotations
 
@@ -30,7 +36,7 @@ from boto3.dynamodb.conditions import Key
 
 from bugforge.select import Outcome
 
-from cloud import config, ddb_io, ids, s3_io
+from cloud import auth, config, ddb_io, ids, progress, s3_io
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -72,6 +78,26 @@ def _response(status: int, payload) -> dict:
         "headers": {"content-type": "application/json"},
         "body": ddb_io.dumps(payload),
     }
+
+
+def _session(event: dict) -> dict | None:
+    """The verified signed-in user, or None. Never raises: a stack deployed
+    without auth secrets stays fully usable signed-out."""
+    try:
+        return auth.read_session(event, auth.signing_key())
+    except auth.AuthError:
+        log.warning("auth is not configured; treating request as signed out")
+        return None
+
+
+def _require_session(event: dict) -> tuple[dict | None, dict | None]:
+    """Returns (claims, error_response). Exactly one is not None."""
+    claims = _session(event)
+    if claims is None:
+        return None, _response(
+            401, {"error": "sign_in_required", "message": "Sign in with GitHub to submit a fix."}
+        )
+    return claims, None
 
 
 def _body(event: dict) -> dict:
@@ -459,19 +485,27 @@ def sanitize_investigation(raw) -> list[dict]:
 
 
 def post_submission(event: dict) -> dict:
+    claims, denied = _require_session(event)
+    if denied:
+        return denied
+
     body = _body(event)
     challenge_id = body.get("challenge_id")
     patch = body.get("patch")
     if not challenge_id or not patch:
         return _response(400, {"error": "challenge_id and patch are required"})
-    if not ddb_io.get(config.table("challenges"), {"challenge_id": challenge_id}):
+    challenge = ddb_io.get(config.table("challenges"), {"challenge_id": challenge_id})
+    if not challenge:
         return _response(404, {"error": "no such challenge"})
 
+    # From the verified session only. body["user_id"] is ignored if present.
+    user_id = auth.user_id(claims)
     submission_id = f"sub-{uuid.uuid4().hex[:12]}"
     item = {
         "submission_id": submission_id,
         "challenge_id": challenge_id,
-        "user_id": body.get("user_id") or "anonymous",
+        "user_id": user_id,
+        "login": claims.get("login", ""),
         "status": "PENDING",
         "created_at": int(time.time()),
     }
@@ -491,7 +525,10 @@ def post_submission(event: dict) -> dict:
                 "submission_id": submission_id,
                 "challenge_id": challenge_id,
                 "patch": patch,
-                "user_id": body.get("user_id") or "anonymous",
+                "user_id": user_id,
+                "login": claims.get("login", ""),
+                "avatar_url": claims.get("avatar", ""),
+                "seconds": body.get("seconds"),
             }
         ).encode("utf-8"),
     )
@@ -517,6 +554,68 @@ def get_reveal(submission_id: str) -> dict:
         raise RuntimeError(f"fn_reveal failed: {response['Payload'].read()[:500]!r}")
     result = json.loads(response["Payload"].read())
     return _response(result["status"], result["body"])
+
+
+# ---------------------------------------------------------------------------
+# identity
+# ---------------------------------------------------------------------------
+# Reading a session needs the signing key and nothing else, so these live here
+# rather than in fn_auth -- routing them through the one function that can talk
+# to GitHub as the application would widen that role for no reason.
+
+LEADERBOARD_LIMIT = 50
+
+
+def get_me(event: dict) -> dict:
+    """200 with the profile when signed in, 200 with user=None when not.
+
+    Not 401: "are you signed in?" is a question every page asks on load, and
+    an unauthenticated answer is a normal answer, not an error.
+    """
+    claims = _session(event)
+    if not claims:
+        return _response(200, {"user": None})
+    return _response(200, {"user": auth.public_profile(claims)})
+
+
+def get_progress(event: dict, params: dict) -> dict:
+    """The signed-in user's solved challenges. Signed out, the client keeps
+    using its local record, so this answers with an empty list rather than
+    refusing."""
+    claims = _session(event)
+    if not claims:
+        return _response(200, {"solved": [], "count": 0, "signed_in": False})
+    solved = progress.solved(auth.user_id(claims), params.get("repo"))
+    return _response(
+        200,
+        {
+            "solved": solved,
+            "solved_ids": [row["challenge_id"] for row in solved],
+            "count": len(solved),
+            "signed_in": True,
+        },
+    )
+
+
+def get_leaderboard(event: dict) -> dict:
+    rows = _scan(config.table("leaderboard"))
+    rows.sort(key=lambda r: (-float(r.get("score", 0)), -int(r.get("solved", 0)), r.get("login", "")))
+    top = [
+        {
+            "rank": i + 1,
+            "user_id": row.get("user_id", ""),
+            "login": row.get("login", "") or row.get("user_id", ""),
+            "avatar_url": row.get("avatar_url", ""),
+            "solved": int(row.get("solved", 0)),
+            "score": round(float(row.get("score", 0)), 1),
+        }
+        for i, row in enumerate(rows[:LEADERBOARD_LIMIT])
+    ]
+    claims = _session(event)
+    me = auth.user_id(claims) if claims else None
+    for row in top:
+        row["is_you"] = row["user_id"] == me
+    return _response(200, {"leaderboard": top, "count": len(top)})
 
 
 # ---------------------------------------------------------------------------
@@ -549,6 +648,12 @@ def handler(event: dict, context) -> dict:
             return get_reveal(params["submission_id"])
         if route == "GET /gaps":
             return get_gaps(query)
+        if route == "GET /auth/me":
+            return get_me(event)
+        if route == "GET /me/progress":
+            return get_progress(event, query)
+        if route == "GET /leaderboard":
+            return get_leaderboard(event)
     except Exception:
         log.exception("unhandled error on %s", route)
         return _response(500, {"error": "internal error"})

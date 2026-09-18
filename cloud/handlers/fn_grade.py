@@ -24,7 +24,7 @@ from pathlib import Path
 
 from bugforge.runner import run_pytest
 
-from cloud import anti_cheat, config, ddb_io, s3_io, workspace
+from cloud import anti_cheat, config, ddb_io, progress, s3_io, workspace
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -93,12 +93,50 @@ def _record(submission_id: str, fields: dict) -> dict:
     return item
 
 
-def _award(user_id: str, challenge_id: str, difficulty: float) -> None:
+def _award(user: dict, challenge: dict, challenge_id: str, seconds) -> None:
+    """Records the solve, and scores it only if this is the first one.
+
+    The award is gated on progress.record_solve returning True, so
+    re-submitting a fix you have already had accepted adds nothing. Anonymous
+    submissions no longer exist (POST /submissions requires a session), but
+    the guard stays: an unauthenticated id must never reach the leaderboard.
+    """
+    user_id = user.get("user_id") or ""
+    if not user_id or user_id == "anonymous":
+        return
+    difficulty = float(challenge.get("difficulty_score", 0))
+    first_time = progress.record_solve(
+        user_id, challenge_id, challenge.get("repo", ""), difficulty, seconds
+    )
+    if not first_time:
+        return
+    # Every attribute goes through ExpressionAttributeNames rather than being
+    # spelled inline: DynamoDB's reserved-word list is long and an accidental
+    # collision here fails at runtime, in the one path nothing else covers.
     ddb_io.table(config.table("leaderboard")).update_item(
         Key={"user_id": user_id},
-        UpdateExpression="ADD solved :one, score :points SET updated_at = :now",
+        UpdateExpression=(
+            "ADD #solved :one, #score :points "
+            "SET #updated = :now, #login = :login, #avatar = :avatar"
+        ),
+        ExpressionAttributeNames={
+            "#solved": "solved",
+            "#score": "score",
+            "#updated": "updated_at",
+            "#login": "login",
+            "#avatar": "avatar_url",
+        },
         ExpressionAttributeValues=ddb_io.to_ddb(
-            {":one": 1, ":points": difficulty, ":now": int(time.time())}
+            {
+                ":one": 1,
+                ":points": difficulty,
+                ":now": int(time.time()),
+                ":login": user.get("login") or user_id,
+                # Restamped on every award, so a changed GitHub handle or
+                # avatar catches up without a backfill and the leaderboard
+                # read needs no GitHub call of its own.
+                ":avatar": user.get("avatar_url") or "",
+            }
         ),
     )
 
@@ -108,6 +146,14 @@ def handler(event: dict, context) -> dict:
     challenge_id = event["challenge_id"]
     patch_text = event["patch"]
     user_id = event.get("user_id") or "anonymous"
+    # Identity is decided by fn_api from the verified session cookie and
+    # passed through; this function never reads a user id off anything a
+    # client sent.
+    user = {
+        "user_id": user_id,
+        "login": event.get("login") or "",
+        "avatar_url": event.get("avatar_url") or "",
+    }
     bucket = config.bucket()
 
     # (a) hygiene -- path rules first, so a patch aimed at a test file never
@@ -164,7 +210,7 @@ def handler(event: dict, context) -> dict:
     green = result.num_failed_or_errored == 0 and result.returncode == 0
     if green:
         challenge = ddb_io.get(config.table("challenges"), {"challenge_id": challenge_id}) or {}
-        _award(user_id, challenge_id, float(challenge.get("difficulty_score", 0)))
+        _award(user, challenge, challenge_id, event.get("seconds"))
         return _record(
             submission_id,
             {

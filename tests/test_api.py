@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import pytest
 
 from bugforge.select import Outcome
-from cloud import ids
+from cloud import auth, ids
 from cloud.handlers import fn_api, fn_reveal
 
 
@@ -50,6 +50,24 @@ def env(monkeypatch):
 
 def _body(response):
     return json.loads(response["body"])
+
+
+SIGNING_KEY = "test-signing-key"
+
+
+@pytest.fixture
+def signed_in(monkeypatch):
+    """A request event carrying a valid session cookie for one GitHub user."""
+    monkeypatch.setenv("SESSION_SIGNING_SECRET_ARN_VALUE", SIGNING_KEY)
+
+    def event(**extra):
+        session = auth.make_session(
+            {"id": 4242, "login": "octocat", "avatar_url": "https://avatars/octocat.png"},
+            SIGNING_KEY.encode(),
+        )
+        return {"cookies": [f"{auth.COOKIE_NAME}={session}"], **extra}
+
+    return event
 
 
 # --------------------------------------------------------------------------
@@ -390,7 +408,7 @@ def test_sanitize_investigation_caps_the_length():
     assert len(fn_api.sanitize_investigation([{"path": "a.py", "at": i} for i in range(500)])) == 300
 
 
-def test_post_submission_stores_the_investigation_log(env, monkeypatch):
+def test_post_submission_stores_the_investigation_log(env, signed_in, monkeypatch):
     monkeypatch.setenv("GRADE_FUNCTION_ARN", "arn:grade")
     monkeypatch.setattr(fn_api.ddb_io, "get", lambda table, key: dict(ROW))
     stored = {}
@@ -403,15 +421,15 @@ def test_post_submission_stores_the_investigation_log(env, monkeypatch):
     monkeypatch.setattr(fn_api, "lambda_client", lambda: _Lambda())
 
     response = fn_api.post_submission(
-        {
-            "body": json.dumps(
+        signed_in(
+            body=json.dumps(
                 {
                     "challenge_id": ROW["challenge_id"],
                     "patch": "--- a/x\n+++ b/x\n",
                     "investigation": [{"path": "tenacity/retry.py", "at": 5}, {"bad": 1}],
                 }
             )
-        }
+        )
     )
 
     assert response["statusCode"] == 202
@@ -420,7 +438,7 @@ def test_post_submission_stores_the_investigation_log(env, monkeypatch):
     assert "investigation" not in json.loads(response["body"])
 
 
-def test_post_submission_without_a_log_stores_no_field(env, monkeypatch):
+def test_post_submission_without_a_log_stores_no_field(env, signed_in, monkeypatch):
     monkeypatch.setenv("GRADE_FUNCTION_ARN", "arn:grade")
     monkeypatch.setattr(fn_api.ddb_io, "get", lambda table, key: dict(ROW))
     stored = {}

@@ -12,7 +12,11 @@ import argparse
 import difflib
 from pathlib import Path
 
-from bugforge.mutate import apply, find_candidates
+from bugforge.languages import get_adapter
+
+
+# Python is the only registered adapter today; see bugforge/languages/.
+adapter = get_adapter()
 
 
 def main() -> None:
@@ -24,11 +28,11 @@ def main() -> None:
 
     pkg_dir = args.repo_dir / args.package
     all_sites = []  # (rel_path, source, site)
-    for py_file in sorted(pkg_dir.rglob("*.py")):
+    for py_file in adapter.discover_sources(pkg_dir):
         rel = str(py_file.relative_to(args.repo_dir)).replace("\\", "/")
         source = py_file.read_text(encoding="utf-8")
         try:
-            sites = find_candidates(source, rel)
+            sites = adapter.find_candidates(source, rel)
         except SyntaxError:
             continue
         for site in sites:
@@ -38,7 +42,7 @@ def main() -> None:
 
     shown = all_sites[: args.count]
     for rel, source, site in shown:
-        mutated = apply(source, site)
+        mutated = adapter.apply(source, site)
         before_line = source.splitlines()[site.lineno - 1]
         after_line = mutated.splitlines()[site.lineno - 1]
         print(f"{rel}:{site.lineno} [{site.operator_id}] {site.original_token!r} -> {site.mutated_token!r}")
@@ -47,7 +51,7 @@ def main() -> None:
 
     if all_sites:
         rel, source, site = all_sites[0]
-        mutated = apply(source, site)
+        mutated = adapter.apply(source, site)
         print(f"\n=== full diff for {rel} (mutation at line {site.lineno}) ===")
         diff = difflib.unified_diff(
             source.splitlines(keepends=True),

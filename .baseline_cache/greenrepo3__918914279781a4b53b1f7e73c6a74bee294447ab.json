@@ -1,0 +1,14 @@
+{
+  "repo": "greenrepo3",
+  "commit_sha": "918914279781a4b53b1f7e73c6a74bee294447ab",
+  "total_tests": 2,
+  "green": true,
+  "line_to_tests": {
+    "mathy/ops.py:2": [
+      "tests/test_ops.py::test_add"
+    ],
+    "mathy/ops.py:5": [
+      "tests/test_ops.py::test_sub"
+    ]
+  }
+}

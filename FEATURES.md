@@ -27,7 +27,7 @@ never been created and the live URL does not exist yet. See
 | 6 | Web app: landing, repos, course, cards, solve, result, gaps | done, verified in a real browser |
 | 7 | Investigation replay on the result screen | done, verified in a real browser |
 
-Tests: **190 Python tests**, **73 web tests**, all passing.
+Tests: **240 Python tests**, **73 web tests**, all passing.
 
 ---
 
@@ -277,6 +277,86 @@ block cursor as the only motion.
 
 ---
 
+---
+
+## The language seam
+
+`bugforge/languages/`
+
+Python is not hardcoded into the pipeline; it is the first **adapter**.
+Everything BugForge does to a repo is one of five operations, and all five are
+language-specific, so they are named in one protocol
+(`bugforge/languages/base.py`):
+
+```python
+class LanguageAdapter(Protocol):
+    name: str
+    def discover_sources(self, repo: Path) -> list[Path]: ...
+    def find_candidates(self, source: str, path: str) -> list[MutationSite]: ...
+    def apply(self, source: str, site: MutationSite) -> str: ...
+    def coverage_map(self, repo: Path, runner: RunnerConfig) -> LineToTests: ...
+    def run_tests(self, tree: Path, test_ids: list[str] | None, runner: RunnerConfig) -> RunResult: ...
+```
+
+`PythonAdapter` (`bugforge/languages/python.py`) is the sole implementation and
+owns **no logic** — every method forwards to the phase 1–3 code that already
+existed (`baseline.py`, `mutate.py`, `runner.py`), so calling through the
+adapter and calling the function directly do exactly the same thing. That is
+asserted, not assumed: `tests/test_languages.py` compares the two paths
+directly, so the wrapper cannot quietly drift from what it wraps. Callers ask
+`get_adapter()` for an adapter by name; an unknown name raises
+`UnsupportedLanguageError` naming what *is* available. The generate Lambda
+(`cloud/handlers/fn_generate.py`) and the demo CLIs go through it.
+
+### Adding a language
+
+The seam is honest about which parts are easy and which are not. Locating and
+splicing tokens is a solved problem in every language; **`coverage_map` is the
+hard one.** Python hands us per-test coverage contexts for free
+(`--cov-context=test`), so the whole `line -> tests that cover it` map falls
+out of the single baseline run. No other toolchain below does that, and
+without it Phase 3 cannot run "only the tests that cover this line" — which is
+the optimisation the entire pipeline's runtime depends on.
+
+| | Parse & locate | Coverage | Runner |
+|---|---|---|---|
+| **Go** | `go/ast` (stdlib, exact positions) or tree-sitter | `go test -coverprofile` | `go test ./...`, test ids as `-run` regexes |
+| **Java** | tree-sitter | JaCoCo (`jacoco.exec` → per-class/line) | Maven vs Gradle detection; Surefire XML for results |
+| **C++** | tree-sitter | gcov / lcov (`.gcda` → `.info`) | CMake + CTest |
+
+Per language, concretely:
+
+- **Go** — `go/ast` gives byte-accurate positions via `token.FileSet`, so
+  `find_candidates`/`apply` port almost directly. The blocker is coverage:
+  `-coverprofile` is a **whole-run** profile with **no per-test contexts**, so
+  there is no line→tests map. The options are (a) run each test in isolation
+  with its own profile and union them — correct, but O(tests) suite runs, which
+  only works for small suites; (b) fall back to per-*package* granularity and
+  accept running a package's tests instead of a handful; or (c) build the map
+  once per commit offline and cache it, since the baseline is already cached
+  per `(repo, commit_sha)`. Also needs `_test.go` exclusion in
+  `discover_sources` and a `go build` gate before the run, because Go rejects
+  at compile time what Python would surface as a test failure.
+- **Java** — tree-sitter for positions (no stdlib parser worth shelling to).
+  JaCoCo produces per-line hit data but, like Go, **aggregates across the whole
+  run by default**; per-test attribution means one JaCoCo dump per test
+  (`@Rule`/agent `sessionid`) or accepting per-class granularity. The runner
+  has to detect Maven vs Gradle and parse Surefire/Failsafe XML rather than
+  scraping stdout. JVM startup makes the "run only covering tests" saving much
+  larger here than in Python — and the per-test coverage cost much higher.
+- **C++** — tree-sitter for positions; the preprocessor means a located token
+  may sit in a branch that never compiles for this build config, so
+  `find_candidates` needs a build-config-aware skip that Python has no
+  equivalent of. gcov/lcov emit `.gcda` per object file; per-test attribution
+  requires clearing counters between tests (`__gcov_reset`), so the same
+  per-test-run cost applies. CMake + CTest for discovery and running, with
+  `ctest -R` for test ids. Compile time, not test time, dominates — the 30s
+  per-mutation timeout would need to be per-language.
+
+Everything downstream of the adapter — scoring, the rejection taxonomy, test
+gaps, packaging, the describer, the whole web app — is already
+language-agnostic and would not change.
+
 ## How it was verified
 
 Phases 6 and 7 were driven end to end in a real Chrome browser against a local
@@ -334,10 +414,11 @@ browser.**
 
 ```
 bugforge/     phases 1–3: baseline, mutate, runner, select, package  (pure Python)
+  languages/  the LanguageAdapter protocol + PythonAdapter (the only one)
 cloud/        phase 4–5 glue: handlers, anti-cheat, describer, S3/DDB IO
 infra/        SAM template, state machine, per-repo Docker image, vetted list
 web/          phase 6–7 Next.js app (app/, components/, lib/, scripts/)
 scripts/      demo/vetting CLIs for each phase
-tests/        190 Python tests
+tests/        240 Python tests
 amplify.yml   Amplify build config (monorepo appRoot: web)
 ```

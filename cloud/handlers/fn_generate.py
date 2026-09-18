@@ -14,6 +14,7 @@ import logging
 from dataclasses import asdict
 from pathlib import Path
 
+from bugforge.languages import get_adapter
 from bugforge.models import Baseline
 from bugforge.mutate import MutationError, apply, find_candidates
 
@@ -23,6 +24,11 @@ log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 BATCH_SIZE = 15
+
+# The only language we generate for. Asking the registry rather than reaching
+# for mutate.py directly is what keeps this handler language-agnostic; see
+# bugforge/languages/base.py.
+ADAPTER = get_adapter()
 
 
 def package_dir(tree: Path, package: str) -> Path:
@@ -43,7 +49,7 @@ def handler(event: dict, context) -> dict:
     pkg = package_dir(tree, config.repo_package())
 
     sites: list[dict] = []
-    for py_file in sorted(pkg.rglob("*.py")):
+    for py_file in ADAPTER.discover_sources(pkg):
         rel = str(py_file.relative_to(tree)).replace("\\", "/")
         source = py_file.read_text(encoding="utf-8")
         try:

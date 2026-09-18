@@ -14,10 +14,15 @@ import time
 from pathlib import Path
 
 from bugforge.baseline import compute_baseline, is_cached
-from bugforge.mutate import MutationError, apply, find_candidates
+from bugforge.languages import get_adapter
+from bugforge.mutate import MutationError
 from bugforge.package import package_challenge
 from bugforge.run_report import Stopwatch, build_run_report, format_taxonomy, write_run_report
 from bugforge.select import Outcome, run_selection
+
+
+# Python is the only registered adapter today; see bugforge/languages/.
+adapter = get_adapter()
 
 
 def main() -> None:
@@ -45,12 +50,12 @@ def main() -> None:
     sources_by_file = {}
     candidates_generated = 0
     generate_started = time.perf_counter()
-    for py_file in sorted(pkg_dir.rglob("*.py")):
+    for py_file in adapter.discover_sources(pkg_dir):
         rel = str(py_file.relative_to(args.repo_dir)).replace("\\", "/")
         source = py_file.read_text(encoding="utf-8")
         sources_by_file[rel] = source
         try:
-            sites = find_candidates(source, rel)
+            sites = adapter.find_candidates(source, rel)
         except SyntaxError:
             continue
         # only sites on covered lines make it into the pipeline at all
@@ -59,7 +64,7 @@ def main() -> None:
             if not baseline.tests_for_line(site.path, site.lineno):
                 continue
             try:
-                mutated = apply(source, site)
+                mutated = adapter.apply(source, site)
             except MutationError:
                 continue
             sites_and_sources.append((site, mutated))
@@ -131,7 +136,7 @@ def main() -> None:
         commit_sha=baseline.commit_sha,
         site=best.site,
         original_source=original_source,
-        mutated_source=apply(original_source, best.site),
+        mutated_source=adapter.apply(original_source, best.site),
         classification=best,
         output_dir=args.output_dir,
     )

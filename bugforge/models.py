@@ -1,7 +1,24 @@
 """Shared dataclasses for the BugForge mutation pipeline."""
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
+
+# "path/to/file.py:lineno" -> sorted test ids that execute that line. Named
+# because it is the one piece of data every language adapter has to produce,
+# and the one that is hardest to produce outside Python (see LanguageAdapter).
+LineToTests = dict[str, list[str]]
+
+
+@dataclass(frozen=True)
+class RunnerConfig:
+    """How to invoke a repo's test suite. Passed to LanguageAdapter methods
+    that shell out, so the adapter itself stays stateless about a given repo."""
+
+    package: str = ""
+    python: str = sys.executable
+    timeout_s: int = 30
+    use_cache: bool = True
 
 
 @dataclass
