@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getChallenges, getRepos, type DifficultyLabel } from "@/lib/api";
 import { plural, repoDisplay, repoShort } from "@/lib/format";
-import { readSolved } from "@/lib/progress";
+import { loadSolved } from "@/lib/progress";
+import { useSession } from "@/lib/session";
 import { useApi } from "@/lib/useApi";
 import { ChallengeCard } from "../ChallengeCard";
 import { ErrorLine, Loading, PageHeader } from "../Status";
@@ -19,7 +20,16 @@ export function Course() {
   const [filter, setFilter] = useState<DifficultyLabel | "all">("all");
   const [solved, setSolved] = useState<Set<string>>(new Set());
 
-  useEffect(() => setSolved(readSolved()), []);
+  // Re-read when the signed-in user changes: signing in mid-course should
+  // pull in what you solved on another device without a reload.
+  const { user } = useSession();
+  useEffect(() => {
+    let live = true;
+    loadSolved(repo).then((s) => live && setSolved(s));
+    return () => {
+      live = false;
+    };
+  }, [repo, user?.user_id]);
 
   if (!repo) return <ErrorLine message="no repo named in the URL" />;
 

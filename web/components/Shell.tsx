@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { apiConfigured } from "@/lib/api";
 import { Cursor } from "./Cursor";
+import { SignIn } from "./SignIn";
 import { ThemeToggle } from "./ThemeToggle";
 
 const NAV = [
@@ -39,6 +40,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
             );
           })}
         </nav>
+        <SignIn />
         <ThemeToggle />
         </div>
       </div>

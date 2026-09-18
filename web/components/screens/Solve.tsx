@@ -17,6 +17,7 @@ import { Workspace, type FrameMark, type WorkspaceFile } from "@/lib/editor";
 import { clock, plural, repoDisplay, repoShort, slug, thousands } from "@/lib/format";
 import { buildPatch, editorText, isModified, isTestPath, pathProblem } from "@/lib/patch";
 import { markSolved, readLocal, writeLocal } from "@/lib/progress";
+import { useSession } from "@/lib/session";
 import type { Visit } from "@/lib/replay";
 import { ancestorDirs, enclosingScope, findTestLine, parseNodeId, tabLabels } from "@/lib/solve";
 import { gunzip, untar } from "@/lib/tar";
@@ -24,6 +25,7 @@ import { parseTraceback, resolveFramePath, type Frame } from "@/lib/traceback";
 import { buildTree, toNodes, type ChallengeTree } from "@/lib/tree";
 import { useTheme } from "@/lib/theme";
 import { LABEL_COLOR } from "../ChallengeCard";
+import { SignInToSubmit } from "../SignIn";
 import { Cursor } from "../Cursor";
 import { DifficultyBars } from "../DifficultyBars";
 import { SiteHeader } from "../Shell";
@@ -294,6 +296,10 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   const [solvedAt, setSolvedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [flash, setFlash] = useState<string | null>(null);
+  // Set when a submit was refused for want of a session, so the prompt appears
+  // where you pressed the key rather than only in the header.
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const { user } = useSession();
   const [mac, setMac] = useState(true);
   const [theme] = useTheme();
 
@@ -536,6 +542,16 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   // ----- submit -----
   const submit = useCallback(async () => {
     if (grading || solvedAt) return;
+    // Checked here as well as by the API, so ⌘↵ signed out says why instead of
+    // building a patch and getting a 401 back. The server is still the one
+    // that decides; this only saves the round trip.
+    if (!user) {
+      setBottomTab("output");
+      setBottomOpen(true);
+      setNeedsSignIn(true);
+      showFlash("sign in with github to submit");
+      return;
+    }
     flushDocs();
     const changes = Object.keys(draftFiles.current).map((path) => ({
       path,
@@ -576,7 +592,12 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
     const update = (fields: Partial<Attempt>) =>
       setAttempts((as) => as.map((a) => (a.n === base.n ? { ...a, ...fields } : a)));
     try {
-      const sent = await submitPatch(id, patch, visits.current);
+      const sent = await submitPatch(
+        id,
+        patch,
+        visits.current,
+        Math.round((Date.now() - initial.startedAt) / 1000),
+      );
       writeLocal(solveKey(id), {
         elapsedMs: Date.now() - initial.startedAt,
         patch,
@@ -588,9 +609,11 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
       } satisfies SolveRecord);
       update({ submissionId: sent.submission_id, state: "grading", sentAt: Date.now() });
     } catch (e) {
+      // A session can expire between loading the page and submitting it.
+      if (e instanceof ApiError && e.status === 401) setNeedsSignIn(true);
       update({ state: "error", message: e instanceof Error ? e.message : String(e) });
     }
-  }, [grading, solvedAt, flushDocs, originalText, attempts.length, id, initial.startedAt, resolved, detail.breakdown]);
+  }, [grading, solvedAt, flushDocs, originalText, attempts.length, id, initial.startedAt, resolved, detail.breakdown, user, showFlash]);
 
   // poll the attempt that is grading
   const gradingAttempt = attempts.find((a) => a.state === "grading");
@@ -959,6 +982,13 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
               <dd>find</dd>
             </dl>
           </div>
+
+          {!user && !solvedAt && (
+            <div className="shrink-0 border-b border-line px-4 py-3">
+              <h2 className="label">{needsSignIn ? "submit blocked" : "signed out"}</h2>
+              <SignInToSubmit className="mt-2 border-0 bg-transparent p-0" />
+            </div>
+          )}
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             <h2 className="label">where you are</h2>

@@ -2,7 +2,14 @@
  * Typed client for the BugForge HTTP API (cloud/handlers/fn_api.py).
  *
  * GETs send no custom headers so they stay CORS "simple requests"; only the
- * two POSTs carry content-type and trigger a preflight.
+ * POSTs carry content-type and trigger a preflight.
+ *
+ * Every request sends `credentials: "include"`, because the session cookie is
+ * cross-site (Amplify -> execute-api) and the browser would otherwise drop it.
+ * That requires the API to answer with a specific Access-Control-Allow-Origin
+ * and Allow-Credentials: true -- `WebOrigin="*"` disables sign-in entirely.
+ * The cookie is HttpOnly, so nothing here can read it; the only way to know
+ * who you are is to ask GET /auth/me.
  */
 
 import type { Visit } from "./replay";
@@ -25,7 +32,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!apiConfigured) throw new ApiError(0, "NEXT_PUBLIC_API_URL was not set when this site was built");
   let response: Response;
   try {
-    response = await fetch(`${BASE}${path}`, { cache: "no-store", ...init });
+    response = await fetch(`${BASE}${path}`, { cache: "no-store", credentials: "include", ...init });
   } catch {
     throw new ApiError(0, "network error: the API did not respond");
   }
@@ -232,11 +239,60 @@ export interface Reveal {
   github_url: string;
 }
 
-export const submitPatch = (challengeId: string, patch: string, investigation: Visit[] = []) =>
+export const submitPatch = (
+  challengeId: string,
+  patch: string,
+  investigation: Visit[] = [],
+  seconds?: number,
+) =>
   post<{ submission_id: string; status: "PENDING" }>("/submissions", {
     challenge_id: challengeId,
     patch,
     investigation,
+    seconds,
   });
 export const getSubmission = (id: string) => request<Submission>(`/submissions/${encodeURIComponent(id)}`);
 export const getReveal = (id: string) => request<Reveal>(`/submissions/${encodeURIComponent(id)}/reveal`);
+
+// ---------------------------------------------------------------------------
+// sign-in
+// ---------------------------------------------------------------------------
+
+export interface User {
+  user_id: string;
+  login: string;
+  avatar_url: string;
+}
+
+export interface ProgressResponse {
+  solved: { challenge_id: string; repo: string; solved_at: number; seconds?: number }[];
+  solved_ids?: string[];
+  count: number;
+  signed_in: boolean;
+}
+
+export interface LeaderboardRow {
+  rank: number;
+  user_id: string;
+  login: string;
+  avatar_url: string;
+  solved: number;
+  score: number;
+  is_you: boolean;
+}
+
+export const getMe = () => request<{ user: User | null }>("/auth/me");
+export const signOut = () => post<{ signed_out: boolean }>("/auth/logout", {});
+export const getProgress = (repo?: string) =>
+  request<ProgressResponse>(repo ? `/me/progress?repo=${encodeURIComponent(repo)}` : "/me/progress");
+export const getLeaderboard = () =>
+  request<{ leaderboard: LeaderboardRow[]; count: number }>("/leaderboard");
+
+/**
+ * A full-page navigation, not a fetch: the OAuth flow is a redirect chain
+ * through github.com, and XHR cannot follow it. `returnTo` comes back through
+ * the signed state token, and the server refuses anything off our origin.
+ */
+export function signInUrl(returnTo: string): string {
+  return `${BASE}/auth/github?return_to=${encodeURIComponent(returnTo)}`;
+}

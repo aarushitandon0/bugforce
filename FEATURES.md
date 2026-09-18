@@ -8,7 +8,7 @@ mutation the suite *misses* becomes a test-gap report for the maintainers.
 No model picks, scores, or grades anything. There is exactly one model call in
 the whole system, and it only writes a title and two sentences of prose.
 
-**Status:** Phases 1–7 are code-complete and tested locally. **Nothing is
+**Status:** Phases 1–8 are code-complete and tested locally. **Nothing is
 deployed.** There are no AWS credentials on the build machine, so the stack has
 never been created and the live URL does not exist yet. See
 [Deploying](#deploying).
@@ -26,8 +26,9 @@ never been created and the live URL does not exist yet. See
 | 5 | Describer: one model call for a title and two sentences, with a deterministic fallback | done, tested; **Bedrock output never exercised** |
 | 6 | Web app: landing, repos, course, cards, solve, result, gaps | done, verified in a real browser |
 | 7 | Investigation replay on the result screen | done, verified in a real browser |
+| 8 | GitHub sign-in: identity, server-side progress, gated submissions | code done, **never deployed**; needs a real OAuth app |
 
-Tests: **240 Python tests**, **73 web tests**, all passing.
+Tests: **301 Python tests**, **88 web tests**, all passing.
 
 ---
 
@@ -101,9 +102,10 @@ preserved in the tree.
 `infra/template.yaml` (SAM), `infra/statemachine/forge_repo.asl.json`,
 `infra/docker/`, `cloud/`
 
-- **22 resources**: 9 Lambda functions, 4 DynamoDB tables (challenges,
-  submissions, gap reports, leaderboard), 1 S3 bucket, 1 HTTP API, 1 state
-  machine, and a **separate IAM role per function**.
+- **28 resources**: 10 Lambda functions, 5 DynamoDB tables (challenges,
+  submissions, gap reports, leaderboard, progress), 3 Secrets Manager secrets,
+  1 S3 bucket, 1 HTTP API, 1 state machine, and a **separate IAM role per
+  function**. (22 of those predate Phase 8; sign-in added six.)
 - **Workflow**: `Baseline → Generate → Map(15 parallel batches) → Score →
   Describe → Persist`. `fn_score` loops back into itself on a remaining-time
   budget, because one full-suite run per survivor does not fit in a single
@@ -136,7 +138,8 @@ preserved in the tree.
 **API**: `POST /forge`, `GET /forge/{execution_id}`, `GET /repos`,
 `GET /challenges`, `GET /challenges/{id}`, `GET /challenges/{id}/tree`,
 `POST /submissions`, `GET /submissions/{id}`, `GET /submissions/{id}/reveal`,
-`GET /gaps`.
+`GET /gaps`, `GET /leaderboard`, `GET /me/progress`, plus the four sign-in
+routes (Phase 8). Only `POST /submissions` requires a session.
 
 The live generation stream masks the location of every **kept** or
 still-scoring mutation (`░░░░░░.py:░░░`) while showing rejects and test gaps in
@@ -279,6 +282,95 @@ block cursor as the only motion.
 
 ---
 
+---
+
+## Phase 8 — GitHub sign-in
+
+`cloud/auth.py`, `cloud/handlers/fn_auth.py`, `cloud/progress.py`,
+`web/lib/session.ts`, `web/components/SignIn.tsx`
+
+The OAuth **web flow**, on our own Lambda. No Cognito, no new managed service:
+one function, three routes, two secrets.
+
+    GET  /auth/github    -> 302 to github.com, signed state in a 10-minute cookie
+    GET  /auth/callback  <- code -> token -> profile -> session cookie -> 302 back
+    POST /auth/logout    -> clears the cookie
+    GET  /auth/me        -> the profile, or {"user": null}
+
+### What signing in changes
+
+Three things, and nothing else. **Submissions are attributed to you** — `POST
+/submissions` is the one gated route. **Your solved challenges follow you**
+(`ProgressTable`, `GET /me/progress`), instead of living only in one browser's
+localStorage. **The leaderboard shows a GitHub handle and avatar** instead of
+an opaque id. Browsing repos, opening a course, reading a traceback, editing
+and the whole gap report stay open, signed out.
+
+### The parts that are security, not plumbing
+
+- **A session is signed, not stored.** An HS256 JWT holding the GitHub numeric
+  id, login and avatar. No session table, nothing to revoke, and no DynamoDB
+  round trip per request — a session grants exactly one thing, and that is
+  worth less than the latency. `alg` is never read back out of the token
+  (the "alg: none" forgery), verification is `hmac.compare_digest`, and a
+  missing, expired, malformed or foreign-signed token is indistinguishable
+  from being signed out.
+- **The user id comes from the session, never the body.** It is
+  `gh:<numeric id>` — the id, not the login, because logins are renameable and
+  a renamed login would otherwise inherit someone else's solved history. This
+  also closes a real hole in the pre-auth code, where `POST /submissions` took
+  `user_id` from the request body: anyone could have written points into
+  anyone's leaderboard row.
+- **`state` is signed *and* echoed in a cookie**, and both must match. Without
+  it an attacker can complete a sign-in inside a victim's browser with their
+  own GitHub code, silently attaching the victim's work to their account.
+- **The callback can only redirect to our own origin.** An open redirect on an
+  OAuth callback is how a login flow becomes a phishing primitive, so anything
+  that is not a same-origin absolute URL or a plain relative path becomes the
+  app root.
+- **Two secrets, two blast radii.** The GitHub client secret can impersonate
+  the whole application to GitHub, so **only fn_auth's role can read it** —
+  that role has no S3, no DynamoDB and no Lambda invoke at all. The session
+  signing key can do nothing but mint and verify sessions for this stack, so
+  fn_api gets it too, because it has to verify a cookie on every gated
+  request. It is generated by Secrets Manager rather than passed in: nobody
+  needs to know that value, so nobody should ever have typed it.
+- **A solve is scored once.** `progress.record_solve` writes conditionally on
+  `attribute_not_exists(challenge_id)`, and points are awarded **only when that
+  write succeeds**. Without it, resubmitting the same accepted fix is an
+  unbounded score.
+- **Failing closed is not failing over.** A stack deployed with no auth
+  secrets is fully usable signed out: every route answers, `GET /auth/me`
+  returns `{"user": null}`, and only submitting is refused. Sign-in is an
+  enhancement; no page fails to render because of it.
+
+### The cookie is cross-site, and that has consequences
+
+The web app is on Amplify and the API is on execute-api — different
+registrable domains. So the session cookie is `HttpOnly; Secure;
+SameSite=None`, every request from the client sends `credentials: "include"`,
+and the API answers `Access-Control-Allow-Credentials: true`. **`AllowCredentials`
+is incompatible with `AllowOrigins: ["*"]` by spec**, so deploying sign-in
+*requires* a real `WebOrigin`. With `WebOrigin="*"` the stack still deploys and
+still works — signed out.
+
+Because the cookie is HttpOnly, nothing in the browser can read it; the only
+way the app learns who you are is `GET /auth/me`. `web/lib/session.ts` caches
+that one answer in a module-level promise shared by every subscriber, so the
+header, the course page and the solve screen cost one request between them.
+
+### Solved state: merged, not chosen between
+
+Local and server sets are unioned. The common path is solving a few challenges
+signed out and then signing in — dropping the local set at that moment would
+look exactly like losing your work.
+
+> **Not yet deployed.** There is no GitHub OAuth app and no callback URL,
+> because the callback URL does not exist until the stack does. Everything
+> above is unit-tested (61 tests across `tests/test_auth.py` and
+> `tests/test_auth_api.py`, 9 in `web/lib/session.test.ts`), but no real GitHub
+> round trip has ever happened.
+
 ## The language seam
 
 `bugforge/languages/`
@@ -379,20 +471,44 @@ the true source:
 The mock stands in for AWS. **The real Lambdas have never been called from a
 browser.**
 
+Phase 8 was **not** driven in a browser: the OAuth flow leaves our origin for
+github.com and back, and there is no OAuth app to leave for. It is covered by
+unit tests only — signing, verification, state, the open-redirect rule, the
+gate, and the one-solve award. Treat the browser half (the header control, the
+redirect round trip, the cookie actually surviving the cross-site hop) as
+unverified until it is deployed.
+
 ## Deploying
 
 1. Build and push the image for a vetted repo:
    `./infra/docker/build_and_push.sh jd__tenacity us-east-1`
 2. `sam deploy` the stack with `WebOrigin` set to the Amplify URL — both the API
    and the S3 bucket's CORS rules use it, and without it the browser cannot
-   download challenge trees.
+   download challenge trees. **`WebOrigin` must be a real origin, not `*`, for
+   sign-in to work**: a credentialed cross-site cookie and a wildcard origin
+   are mutually exclusive by spec.
 3. In Amplify, connect the repo (`amplify.yml` is at the root) and set
    `NEXT_PUBLIC_API_URL` to the stack's `ApiUrl` output. It is inlined at build
    time; the build fails if it is missing.
+4. **Sign-in, which needs two passes** — the callback URL does not exist until
+   the stack does:
+   a. after the first deploy, read the `OAuthCallbackUrl` output;
+   b. create a GitHub OAuth app (Settings → Developer settings → OAuth Apps)
+      with that exact URL as the Authorization callback URL;
+   c. redeploy with `GitHubClientId`, `GitHubClientSecret` and
+      `OAuthRedirectUri` set to the same URL. GitHub compares the redirect URI
+      on both legs of the flow, so it is configured, never derived from the
+      request — whose Host header a caller controls.
+   Skipping step 4 entirely is fine: the stack deploys and every route works,
+   signed out. Only submitting is refused.
 
 ## Known issues
 
 - **Not deployed.** No AWS credentials on the build machine.
+- **No GitHub round trip has ever happened.** There is no OAuth app, so
+  `exchange_code` and `fetch_user` — the only two functions in `cloud/auth.py`
+  that touch the network — have only ever run against stubs. Everything around
+  them is tested.
 - **Bedrock output never seen.** Every challenge so far uses the deterministic
   template.
 - **Next.js 16.3.5 export bug.** Next writes per-segment prefetch payloads to
@@ -415,10 +531,10 @@ browser.**
 ```
 bugforge/     phases 1–3: baseline, mutate, runner, select, package  (pure Python)
   languages/  the LanguageAdapter protocol + PythonAdapter (the only one)
-cloud/        phase 4–5 glue: handlers, anti-cheat, describer, S3/DDB IO
+cloud/        phase 4–5, 8 glue: handlers, anti-cheat, describer, auth, S3/DDB IO
 infra/        SAM template, state machine, per-repo Docker image, vetted list
-web/          phase 6–7 Next.js app (app/, components/, lib/, scripts/)
+web/          phase 6–8 Next.js app (app/, components/, lib/, scripts/)
 scripts/      demo/vetting CLIs for each phase
-tests/        240 Python tests
+tests/        301 Python tests
 amplify.yml   Amplify build config (monorepo appRoot: web)
 ```
