@@ -11,6 +11,7 @@ const NAV = [
   { href: "/", label: "forge", match: (p: string) => p === "/" },
   { href: "/repos/", label: "repos", match: (p: string) => p.startsWith("/repos") || p.startsWith("/repo/") },
   { href: "/gaps/", label: "gaps", match: (p: string) => p.startsWith("/gaps") },
+  { href: "/profile/", label: "profile", match: (p: string) => p.startsWith("/profile") },
 ];
 
 export function SiteHeader({

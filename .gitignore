@@ -103,3 +103,26 @@ tmp/
 # ---------------------------------------------------------------
 infra/local/volume/
 infra/local/.build/
+
+# ---------------------------------------------------------------
+# Local run state. Generated per machine; never useful to a reader.
+# ---------------------------------------------------------------
+# Written by env_vars.py / localize.py against whatever stack is up locally.
+infra/local/env.json
+infra/local/container-env.json
+infra/local/event-repos.json
+
+# Vendored clones and per-repo virtualenvs from local forging. These were
+# tracked once, which is how six venvs and the answer tarballs reached the
+# history; they are untracked now and must not come back.
+cache/**
+*__venv/
+*_output/**
+
+# ---------------------------------------------------------------
+# Demo notes. Written for the person presenting, not for a reader
+# of the repo.
+# ---------------------------------------------------------------
+DEMO_SPEECH.md
+DEMO_FLOW.md
+demo/

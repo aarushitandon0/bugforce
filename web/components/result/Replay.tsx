@@ -107,7 +107,7 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
           </span>
           <span className="flex items-center gap-1.5">
             <svg width="16" height="8" aria-hidden>
-              <line x1="0" y1="4" x2="16" y2="4" stroke="var(--color-causal)" strokeWidth="1.5" />
+              <line x1="0" y1="4" x2="16" y2="4" stroke="var(--color-frame)" strokeWidth="1.5" />
             </svg>
             the causal path
           </span>
@@ -145,7 +145,7 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
                       y={y - ROW / 2}
                       width={plotW}
                       height={ROW}
-                      fill="var(--color-error)"
+                      fill="var(--color-drop)"
                       opacity="0.06"
                     />
                   )}
@@ -154,12 +154,12 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
                     y={y + 3.5}
                     textAnchor="end"
                     fontSize="11"
-                    fill={isMutated ? "var(--color-error)" : onCausal ? "var(--color-causal)" : "var(--color-dim)"}
+                    fill={isMutated ? "var(--color-drop)" : onCausal ? "var(--color-frame)" : "var(--color-faint)"}
                   >
                     {label}
                   </text>
                   {spent > 0 && (
-                    <text x={width} y={y + 3.5} textAnchor="end" fontSize="9.5" fill="var(--color-dim)">
+                    <text x={width} y={y + 3.5} textAnchor="end" fontSize="9.5" fill="var(--color-faint)">
                       {clock(spent)}
                     </text>
                   )}
@@ -168,7 +168,7 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
             })}
 
             {/* the causal path, under the learner's line so both stay readable */}
-            <path d={causalLine.join(" ")} fill="none" stroke="var(--color-causal)" strokeWidth="3" opacity="0.5" />
+            <path d={causalLine.join(" ")} fill="none" stroke="var(--color-frame)" strokeWidth="3" opacity="0.5" />
             {causal.map((path, i) => (
               <rect
                 key={`c${i}`}
@@ -176,10 +176,10 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
                 y={laneY(plan.laneOf(path)) - 2.5}
                 width="5"
                 height="5"
-                fill="var(--color-causal)"
+                fill="var(--color-frame)"
               />
             ))}
-            <text x={plotX + 6} y={laneY(plan.laneOf(causal[0])) - 9} fontSize="9.5" fill="var(--color-causal)">
+            <text x={plotX + 6} y={laneY(plan.laneOf(causal[0])) - 9} fontSize="9.5" fill="var(--color-frame)">
               raised here
             </text>
             <text
@@ -187,7 +187,7 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
               y={laneY(plan.laneOf(mutatedPath)) - 9}
               textAnchor="end"
               fontSize="9.5"
-              fill="var(--color-causal)"
+              fill="var(--color-frame)"
             >
               the bug
             </text>
@@ -222,13 +222,13 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
                   y={height - BOTTOM + 17}
                   textAnchor={t === 0 ? "start" : t === 1 ? "end" : "middle"}
                   fontSize="10"
-                  fill="var(--color-dim)"
+                  fill="var(--color-faint)"
                 >
                   {clock(t * totalMs)}
                 </text>
               </g>
             ))}
-            <text x={labelW} y={height - BOTTOM + 17} textAnchor="end" fontSize="10" fill="var(--color-dim)">
+            <text x={labelW} y={height - BOTTOM + 17} textAnchor="end" fontSize="10" fill="var(--color-faint)">
               time
             </text>
           </svg>

@@ -1,3 +1,0 @@
-"""
-The virtuous test runner.
-"""

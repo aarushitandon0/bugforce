@@ -17,8 +17,6 @@ import { StatLine } from "../ui/StatLine";
  * read as disabled and blocked the fastest path to first value. They now carry
  * the same resting style as every other chip and say what is true instead.
  */
-const NOT_VETTED = ["psf/requests", "arrow-py/arrow"];
-
 /*
  * What is forgeable is a property of the DEPLOYED STACK, not of the build.
  * One stack carries one image and an image carries one repo, so the vetted
@@ -33,25 +31,23 @@ interface Chip {
   language: string;
 }
 
-function chipsFor(forgeable: Forgeable[] | null): { ready: Chip[]; pending: string[] } {
+/*
+ * Only what this stack can actually forge. A repo with no image here was
+ * previously listed as "not forged yet", which reads as a to-do list on the
+ * landing page rather than as a property of one deployment, so it is not shown
+ * at all: one stack carries one image and an image carries one repo.
+ */
+function chipsFor(forgeable: Forgeable[] | null): { ready: Chip[] } {
   // Until the first response lands, show the vetted list rather than an empty
   // row: it is the best guess available and it stops the row from popping in.
   if (forgeable === null) {
-    return { ready: VETTED_REPOS.map((r) => ({ display: r.display, language: r.language })), pending: NOT_VETTED };
+    return { ready: VETTED_REPOS.map((r) => ({ display: r.display, language: r.language })) };
   }
-  const readyUrls = new Set(forgeable.map((f) => normalizeRepoUrl(f.url)));
   return {
     ready: forgeable.map((f) => {
       const vetted = VETTED_BY_URL.get(normalizeRepoUrl(f.url));
       return { display: vetted?.display ?? repoDisplay(f.repo), language: vetted?.language ?? "python" };
     }),
-    // A vetted repo with no image on this stack is in exactly the position an
-    // unvetted one is in, and says the same thing. NOT_VETTED is a static
-    // list, so filter it too: a stack that HAS an image for one of them would
-    // otherwise render it twice, live and "not forged yet" at once.
-    pending: [...VETTED_REPOS.map((r) => r.display), ...NOT_VETTED].filter(
-      (display) => !readyUrls.has(normalizeRepoUrl(display)),
-    ),
   };
 }
 
@@ -132,7 +128,7 @@ export function Landing() {
     }
   }
 
-  const { ready: examples, pending } = chipsFor(forgeable);
+  const { ready: examples } = chipsFor(forgeable);
   const chip = buttonClass("secondary", "sm");
 
   return (
@@ -222,12 +218,6 @@ export function Landing() {
                   enough that a learner should know which one they clicked. */}
               <span className="text-muted">{rulesFor(language).label}</span>
             </button>
-          ))}
-          {pending.map((repo) => (
-            <span key={repo} className={`${chip} text-muted`}>
-              {repo}
-              <span className="text-faint">&middot; not forged yet</span>
-            </span>
           ))}
         </div>
 
