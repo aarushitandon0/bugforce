@@ -81,6 +81,7 @@ export function Course() {
   return (
     <>
       <PageHeader
+        back={{ href: "/repos/", label: "all repos" }}
         eyebrow={`course · ${repoDisplay(repo)}`}
         title={
           <>

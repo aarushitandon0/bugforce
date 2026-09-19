@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getChallenges, getReveal, getSubmission, type ChallengeCard as Card } from "@/lib/api";
@@ -93,20 +93,19 @@ export function Result() {
 
   return (
     <article className="pt-14">
-      {/* Back to the challenge grid. The same treatment and the same target as
-          the solve screen's, so the way out of a challenge does not move
-          depending on whether you have finished it. The count at the foot of
-          this page also links here, but it reads as a stat, and it is a long
-          scroll away after a first-time reveal. */}
-      <Link
-        href={`/repo/?name=${encodeURIComponent(data.repo)}`}
-        className="inline-block text-[12px] text-muted transition-colors duration-[120ms] hover:text-text"
-      >
-        &larr; {repoShort(data.repo)}
-      </Link>
+      {/* Back to the challenge grid. A bordered control, not a text link:
+          this sits above a 44px "PASS" headline, and at 12px muted it read as
+          part of the submission id and got missed. Same target as the solve
+          screen's back link, so the way out does not move depending on
+          whether you have finished. The solved count at the foot of the page
+          also links here, but it reads as a stat. */}
+      <ButtonLink variant="secondary" size="sm" href={`/repo/?name=${encodeURIComponent(data.repo)}`}>
+        <ArrowLeft size={14} strokeWidth={1.5} aria-hidden />
+        all bugs in {repoShort(data.repo)}
+      </ButtonLink>
 
       {/* verdict */}
-      <p className="mt-4 text-[12px] text-muted">$ pytest · {data.submission_id}</p>
+      <p className="mt-8 text-[12px] text-muted">$ pytest · {data.submission_id}</p>
       <h1 className="mt-2 text-[clamp(26px,4.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-keep animate-fade">
         PASS — {thousands(data.tests_passed)} tests green
         <Cursor className="ml-3 !bg-keep" />
