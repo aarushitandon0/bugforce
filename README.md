@@ -8,8 +8,6 @@ with a failing test. You find the bug and patch it. The repository's real test
 suite decides whether you were right. No model grades you, and the grading path
 has no access to the answer.
 
-Track: **Build It.** The whole backend runs on one machine with no AWS account,
-no credentials and nothing billable.
 
 ---
 
