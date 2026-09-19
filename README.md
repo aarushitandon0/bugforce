@@ -14,6 +14,7 @@ has no access to the answer.
 ## Contents
 
 - [Why this exists](#why-this-exists)
+- [Screens](#screens)
 - [How the pipeline works](#how-the-pipeline-works)
 - [Difficulty is measured, not guessed](#difficulty-is-measured-not-guessed)
 - [Grading](#grading)
@@ -25,7 +26,6 @@ has no access to the answer.
 - [What is real and what is a local stand-in](#what-is-real-and-what-is-a-local-stand-in)
 - [Repository layout](#repository-layout)
 - [Verification](#verification)
-- [Current scope and limits](#current-scope-and-limits)
 
 ---
 
@@ -60,6 +60,63 @@ single filter buys three things at once:
 
 That last point deserves to be said plainly: the same machinery that makes
 practice problems is a coverage auditor for any repository you point it at.
+
+---
+
+## Screens
+
+### Forging a repo
+
+![Landing page with the live forge stream](ss/1.png)
+
+The run streams as it happens: 183 tests green at baseline, 120 candidates on
+covered lines, 15 batches. Each row is one mutation and its verdict. Note the
+`keep` rows have their file and line **masked**, because a learner who can read
+the location off the stream has already solved the challenge. The `test gap`
+rows are mutations the suite never noticed.
+
+### Picking a bug
+
+![The challenge grid for jd/tenacity](ss/4.png)
+
+56 bugs from one repository, ordered easiest first, with the bands cut from this
+repo's own score distribution rather than at fixed thresholds. Solved challenges
+are ticked and the next unsolved one is highlighted. The test gap count links
+through to the coverage report.
+
+### Solving
+
+![The solve screen, with the traceback walker and editor](ss/2.png)
+
+The left rail is the parsed traceback, seven frames, clickable. `alt+[` and
+`alt+]` walk it, opening each file at the right line. The gutter separates the
+frame that **raised** from frames above it.
+
+The right rail breaks difficulty into the three things that were actually
+measured, never one opaque number. Test files open read-only, because the suite
+is the grader.
+
+This is the core of the product in one screenshot: the `TypeError` surfaces at
+`wait.py:107`, and the bug is at `wait.py:51`.
+
+### After a pass
+
+![The reveal and the investigation replay](ss/3.png)
+
+The mutation is revealed only after the suite goes green: one token, `self` to
+`None`, with a link to the real line on GitHub at the pinned commit.
+
+Below it, the investigation replay draws which files you opened and when against
+the causal path from crash to cause, and says in a sentence whether you were
+reading the right file.
+
+### Your record
+
+![The profile page](ss/5.png)
+
+Solved against total, per band, a year of activity, streaks, and recent solves.
+Signed out this still works from the browser's own record; signing in merges the
+two rather than replacing one with the other.
 
 ---
 
@@ -444,17 +501,4 @@ tests/              369 pytest tests
 
 ---
 
-## Current scope and limits
 
-One vetted repository is forged and bundled: **jd/tenacity**, at a pinned
-commit, Apache-2.0. From it, **56 challenges** across easy, medium and hard, and
-**44 test gaps** in tenacity's own suite.
-
-Known limits, stated rather than hidden:
-
-- A stack carries one image and an image carries one repository, so exactly one
-  repository is forgeable per stack. A second repository means a second image
-  and a second stack.
-- Root-layout packages only. `src/` layout is rejected at build time.
-- The forge cannot run under LocalStack community, as described above.
-- Go support is implemented and tested but no Go repository is bundled here.

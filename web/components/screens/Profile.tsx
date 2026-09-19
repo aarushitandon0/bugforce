@@ -17,6 +17,7 @@
  */
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import {
   getChallenges,
@@ -137,10 +138,12 @@ export function Profile() {
         )}
       </PageHeader>
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        <div className="flex flex-col gap-4">
-          <IdentityCard login={user?.login ?? "local record"} avatar={user?.avatar_url} rank={rank} />
-          <StatsCard
+      <div className="grid items-start gap-3 lg:grid-cols-[280px_1fr]">
+        <div className="flex flex-col gap-3">
+          <IdentityCard
+            login={user?.login ?? "local record"}
+            avatar={user?.avatar_url}
+            rank={rank}
             activeDays={activeDays}
             longest={longest}
             current={current}
@@ -153,9 +156,15 @@ export function Profile() {
           <ReposCard solves={solves} />
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           <SolvedCard solved={totals.solved} total={totals.total} count={solvedCount} outOf={totalCount} />
           <ActivityCard days={days} />
+        </div>
+
+        {/* Full width: the left column runs out of content well before the
+            right one does, and a list spanning both is what fills that gap
+            rather than leaving a column of empty page. */}
+        <div className="lg:col-span-2">
           <RecentCard solves={solves} />
         </div>
       </div>
@@ -163,44 +172,48 @@ export function Profile() {
   );
 }
 
-function IdentityCard({
-  login,
-  avatar,
-  rank,
+/**
+ * A panel whose title sits inside the body.
+ *
+ * `Panel`'s header slot is its own padded box above a divider, so a card with
+ * a one-line title and three lines of content spent 24px of padding twice and
+ * read as mostly empty. These cards are small and uniform; the title is just
+ * the first line of the body.
+ */
+function Card({
+  title,
+  aside,
+  children,
 }: {
-  login: string;
-  avatar?: string;
-  rank: LeaderboardRow | null;
+  title: string;
+  aside?: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <Panel>
-      <div className="flex items-center gap-3">
-        {avatar ? (
-          // eslint-disable-next-line @next/next/no-img-element -- one avatar, from github's CDN
-          <img src={avatar} alt="" className="h-14 w-14 rounded border border-line" />
-        ) : (
-          <div className="flex h-14 w-14 items-center justify-center rounded border border-line bg-surface-3 text-xl text-muted">
-            {login.slice(0, 1).toUpperCase()}
-          </div>
-        )}
-        <div className="min-w-0">
-          <p className="truncate font-bold text-text">{login}</p>
-          <p className="t-small text-muted">
-            {rank ? `rank ${thousands(rank.rank)}` : "unranked"}
-          </p>
-        </div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="label">{title}</h2>
+        {aside}
       </div>
+      <div className="mt-4">{children}</div>
     </Panel>
   );
 }
 
-function StatsCard({
+/** Who you are and how you have been going, in one card rather than two. */
+function IdentityCard({
+  login,
+  avatar,
+  rank,
   activeDays,
   longest,
   current,
   attempts,
   fastest,
 }: {
+  login: string;
+  avatar?: string;
+  rank: LeaderboardRow | null;
   activeDays: number;
   longest: number;
   current: number;
@@ -212,11 +225,28 @@ function StatsCard({
     ["current streak", plural(current, "day")],
     ["longest streak", plural(longest, "day")],
     ["timed solves", thousands(attempts)],
-    ["fastest solve", fastest === null ? "—" : clock(fastest * 1000)],
+    ["fastest solve", fastest === null ? "not yet" : clock(fastest * 1000)],
   ];
   return (
-    <Panel header={<h2 className="label">stats</h2>}>
-      <dl className="space-y-2">
+    <Panel>
+      <div className="flex items-center gap-3">
+        {avatar ? (
+          // eslint-disable-next-line @next/next/no-img-element -- one avatar, from github's CDN
+          <img src={avatar} alt="" className="h-11 w-11 rounded border border-line" />
+        ) : (
+          <div className="flex h-11 w-11 items-center justify-center rounded border border-line bg-surface-3 text-lg text-muted">
+            {login.slice(0, 1).toUpperCase()}
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="truncate font-bold text-text">{login}</p>
+          <p className="t-small text-muted tabular-nums">
+            {rank ? `rank ${thousands(rank.rank)} · ${rank.score.toFixed(1)} points` : "unranked"}
+          </p>
+        </div>
+      </div>
+
+      <dl className="mt-4 space-y-1.5 border-t border-line pt-4">
         {rows.map(([label, value]) => (
           <div key={label} className="flex items-baseline justify-between gap-3 t-small">
             <dt className="text-muted">{label}</dt>
@@ -231,11 +261,11 @@ function StatsCard({
 function ReposCard({ solves }: { solves: Solve[] }) {
   const rows = byRepo(solves);
   return (
-    <Panel header={<h2 className="label">repos</h2>}>
+    <Card title="repos">
       {rows.length === 0 ? (
         <p className="t-small text-muted">Nothing solved yet.</p>
       ) : (
-        <dl className="space-y-2">
+        <dl className="space-y-1.5">
           {rows.map(([repo, count]) => (
             <div key={repo} className="flex items-baseline justify-between gap-3 t-small">
               <dt className="truncate text-muted">{repoDisplay(repo)}</dt>
@@ -244,7 +274,7 @@ function ReposCard({ solves }: { solves: Solve[] }) {
           ))}
         </dl>
       )}
-    </Panel>
+    </Card>
   );
 }
 
@@ -261,8 +291,8 @@ function SolvedCard({
 }) {
   const pct = outOf > 0 ? Math.round((count / outOf) * 100) : 0;
   return (
-    <Panel header={<h2 className="label">solved bugs</h2>}>
-      <div className="flex flex-wrap items-center gap-8">
+    <Card title="solved bugs">
+      <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
         <Dial solved={count} total={outOf} pct={pct} />
         <dl className="min-w-[220px] flex-1 space-y-3">
           {BANDS.map((band) => {
@@ -293,7 +323,7 @@ function SolvedCard({
           })}
         </dl>
       </div>
-    </Panel>
+    </Card>
   );
 }
 
@@ -369,14 +399,12 @@ function ActivityCard({ days }: { days: number[] }) {
   });
 
   return (
-    <Panel
-      header={
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-          <h2 className="label">activity</h2>
-          <p className="t-small text-muted tabular-nums">
-            {plural(days.length, "solve")} in the last year &middot; {plural(active, "active day")}
-          </p>
-        </div>
+    <Card
+      title="activity"
+      aside={
+        <p className="t-small text-muted tabular-nums">
+          {plural(days.length, "solve")} in the last year &middot; {plural(active, "active day")}
+        </p>
       }
     >
       <div className="overflow-x-auto pb-1">
@@ -435,14 +463,14 @@ function ActivityCard({ days }: { days: number[] }) {
           <span>more</span>
         </div>
       </div>
-    </Panel>
+    </Card>
   );
 }
 
 function RecentCard({ solves }: { solves: Solve[] }) {
   const rows = solves.slice(0, 15);
   return (
-    <Panel header={<h2 className="label">recent solves</h2>}>
+    <Card title="recent solves">
       {rows.length === 0 ? (
         <p className="t-small text-muted">
           Nothing yet. Pick a repo on the <Link href="/repos/" className="link text-text">repos</Link> page and
@@ -464,6 +492,6 @@ function RecentCard({ solves }: { solves: Solve[] }) {
           ))}
         </ul>
       )}
-    </Panel>
+    </Card>
   );
 }
