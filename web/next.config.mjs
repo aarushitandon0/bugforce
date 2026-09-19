@@ -18,6 +18,25 @@
  */
 const localApi = process.env.BUGFORGE_LOCAL_API?.replace(/\/+$/, "");
 
+/**
+ * In proxy mode the only correct value for NEXT_PUBLIC_API_URL is "/api", so
+ * take it rather than trust the environment. Git Bash on Windows rewrites a
+ * value that looks like a unix path before the process ever sees it, so
+ * `NEXT_PUBLIC_API_URL=/api npm run dev` arrives as "C:/Program Files/Git/api"
+ * and every fetch fails on an unparseable URL -- which the client reports as
+ * "network error: the API did not respond", pointing at the API rather than at
+ * the shell. Setting it here is ahead of the bundler reading NEXT_PUBLIC_*.
+ */
+if (localApi && process.env.NEXT_PUBLIC_API_URL !== "/api") {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    console.warn(
+      `[bugforge] NEXT_PUBLIC_API_URL was ${JSON.stringify(process.env.NEXT_PUBLIC_API_URL)}; ` +
+        `using "/api", which is what the dev-server proxy serves.`,
+    );
+  }
+  process.env.NEXT_PUBLIC_API_URL = "/api";
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   ...(localApi ? {} : { output: "export" }),

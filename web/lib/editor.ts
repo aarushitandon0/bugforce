@@ -300,6 +300,12 @@ export class Workspace {
     private readonly onDocChange: (path: string) => void,
     /** 1-based cursor line, for the breadcrumb */
     private readonly onCursor: (line: number) => void = () => {},
+    /**
+     * A keystroke that would have edited a read-only file. CodeMirror drops
+     * those silently, which reads as a broken editor rather than as a rule, so
+     * the screen says so instead.
+     */
+    private readonly onReadOnlyEdit: (path: string) => void = () => {},
   ) {
     this.view = new EditorView({
       parent,
@@ -341,7 +347,34 @@ export class Workspace {
     ];
     if (file.path.endsWith(".py")) extensions.push(python());
     if (file.path.endsWith(".go")) extensions.push(go());
-    if (file.readOnly) extensions.push(EditorState.readOnly.of(true));
+    if (file.readOnly) {
+      extensions.push(EditorState.readOnly.of(true));
+      // Reported from the DOM rather than from a transaction filter: a
+      // read-only state rejects the edit before any transaction exists, so
+      // there is nothing downstream to observe. Every handler returns false,
+      // which leaves CodeMirror's own handling exactly as it was.
+      extensions.push(
+        EditorView.domEventHandlers({
+          beforeinput: () => {
+            this.onReadOnlyEdit(file.path);
+            return false;
+          },
+          paste: () => {
+            this.onReadOnlyEdit(file.path);
+            return false;
+          },
+          keydown: (event) => {
+            const edits =
+              event.key === "Backspace" ||
+              event.key === "Delete" ||
+              event.key === "Enter" ||
+              (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey);
+            if (edits) this.onReadOnlyEdit(file.path);
+            return false;
+          },
+        }),
+      );
+    }
     return EditorState.create({ doc: file.text, extensions });
   }
 

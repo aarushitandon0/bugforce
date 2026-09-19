@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import boto3
 
 _s3 = None
+_presigner = None
 
 
 def client():
@@ -15,6 +17,27 @@ def client():
     if _s3 is None:
         _s3 = boto3.client("s3")
     return _s3
+
+
+def presigner():
+    """The client that signs URLs for a browser, which is not always `client()`.
+
+    A presigned URL is built from the signing client's own endpoint, so it
+    inherits whatever AWS_ENDPOINT_URL the function was given. Deployed that
+    is unset and both clients are the same. Locally it is LocalStack's address
+    *on the docker network* (`http://bugforge-localstack:4566`) -- correct for
+    the function's own calls and a name no browser can resolve, so the solve
+    screen's download fails at DNS and is reported as a network error.
+
+    S3_PUBLIC_ENDPOINT_URL names the same LocalStack on the host instead. It is
+    a second client rather than a rewrite of the finished URL, so the host it
+    signs for is the host it is signed for.
+    """
+    global _presigner
+    if _presigner is None:
+        public = os.environ.get("S3_PUBLIC_ENDPOINT_URL")
+        _presigner = boto3.client("s3", endpoint_url=public) if public else client()
+    return _presigner
 
 
 def put_json(bucket: str, key: str, payload: Any) -> str:
@@ -63,6 +86,6 @@ def list_keys(bucket: str, prefix: str) -> list[str]:
 
 
 def presign(bucket: str, key: str, ttl_seconds: int) -> str:
-    return client().generate_presigned_url(
+    return presigner().generate_presigned_url(
         "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=ttl_seconds
     )

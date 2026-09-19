@@ -511,6 +511,12 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
         docTimer.current = setTimeout(flushDocs, 150);
       },
       setCursorLine,
+      (path) =>
+        showFlash(
+          rules.isTestPath(path)
+            ? `${path.split("/").pop()} is read-only: the test suite is the judge. fix the source file instead.`
+            : `${path.split("/").pop()} is read-only: it is not ${rules.sourceSuffix} source.`,
+        ),
     );
     ws.setDark(document.documentElement.getAttribute("data-theme") !== "light");
     wsRef.current = ws;
@@ -910,7 +916,12 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                 <GutterKey inline className="hidden md:flex" />
               )}
               {activeReadOnly && (
-                <span title="test files and non-Python files can't be patched">read-only &middot; the suite is the judge</span>
+                <span
+                  className="rounded border border-gap px-1.5 py-0.5 text-gap"
+                  title="test files and non-source files can't be patched: the suite is the judge"
+                >
+                  read-only &middot; edit the source file instead
+                </span>
               )}
               {active && modified.has(active) && (
                 <button type="button" onClick={() => revert(active)} className="link text-muted hover:text-text">
@@ -1037,6 +1048,24 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
           {!user && !solvedAt && (
             <div className="shrink-0 px-4 py-3">
               <SignInToSubmit className="border-0 bg-transparent p-0" />
+            </div>
+          )}
+
+          {user && !solvedAt && (
+            <div className="shrink-0 border-t border-line px-4 py-3">
+              <button
+                type="button"
+                onClick={submit}
+                disabled={grading}
+                className="w-full rounded border border-keep px-3 py-2 text-keep transition-colors duration-[120ms] hover:bg-keep hover:text-surface disabled:border-line disabled:text-muted disabled:hover:bg-transparent"
+              >
+                {grading ? "grading…" : `submit fix (${mod}↵)`}
+              </button>
+              <p className="mt-2 t-small text-muted">
+                {modified.size > 0
+                  ? `${plural(modified.size, "file")} changed. the full test suite is the judge.`
+                  : "edit the source file that is not a test, then submit. test files are read-only."}
+              </p>
             </div>
           )}
         </aside>

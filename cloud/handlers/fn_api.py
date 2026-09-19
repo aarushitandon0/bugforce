@@ -89,9 +89,39 @@ def _response(status: int, payload) -> dict:
     }
 
 
+def _on_localstack() -> bool:
+    """True only when an endpoint override is set, i.e. never on real AWS.
+
+    The two local-dev switches below are gated on this as well as on their own
+    flag, so a flag copied into a real deployment by mistake does nothing.
+    """
+    return bool(os.environ.get("AWS_ENDPOINT_URL"))
+
+
+def _local_user() -> dict | None:
+    """A fixed dev identity, so the site is usable without a GitHub OAuth app."""
+    login = os.environ.get("BUGFORGE_LOCAL_USER")
+    if login and _on_localstack():
+        return {"sub": "local-dev", "login": login, "avatar": ""}
+    return None
+
+
+def _local_grading() -> bool:
+    """Grade in this process instead of invoking fn_grade / fn_reveal.
+
+    LocalStack community cannot start container-image Lambdas, and this
+    function already runs in the same image (repo and test suite included) under
+    `sam local start-api`, so it can run the grader itself.
+    """
+    return os.environ.get("BUGFORGE_LOCAL_GRADING") == "1" and _on_localstack()
+
+
 def _session(event: dict) -> dict | None:
     """The verified signed-in user, or None. Never raises: a stack deployed
     without auth secrets stays fully usable signed-out."""
+    local = _local_user()
+    if local:
+        return local
     try:
         return auth.read_session(event, auth.signing_key())
     except auth.AuthError:
@@ -531,6 +561,29 @@ def sanitize_investigation(raw) -> list[dict]:
     return sorted(visits, key=lambda v: v["at"])
 
 
+def _grade_in_background(grade_event: dict) -> None:
+    """Run fn_grade on a thread: the suite outlasts this function's 29s timeout.
+
+    A crash is written back as a verdict, because the client polls until it
+    sees one and would otherwise wait out its whole deadline.
+    """
+    import threading
+
+    def run() -> None:
+        from cloud.handlers import fn_grade
+
+        try:
+            fn_grade.handler(grade_event, None)
+        except Exception as e:  # noqa: BLE001 -- anything the grader raises
+            log.exception("local grading crashed")
+            fn_grade._record(
+                grade_event["submission_id"],
+                {"verdict": fn_grade.FAIL, "reason": f"grader crashed: {e}"[:300], "failing_tests": []},
+            )
+
+    threading.Thread(target=run, daemon=False).start()
+
+
 def post_submission(event: dict) -> dict:
     claims, denied = _require_session(event)
     if denied:
@@ -563,21 +616,24 @@ def post_submission(event: dict) -> dict:
         item["investigation"] = investigation
     ddb_io.put(config.table("submissions"), item)
 
+    grade_event = {
+        "submission_id": submission_id,
+        "challenge_id": challenge_id,
+        "patch": patch,
+        "user_id": user_id,
+        "login": claims.get("login", ""),
+        "avatar_url": claims.get("avatar", ""),
+        "seconds": body.get("seconds"),
+    }
+    if _local_grading():
+        _grade_in_background(grade_event)
+        return _response(202, {"submission_id": submission_id, "status": "PENDING"})
+
     # Grading runs for as long as the suite takes; the client polls.
     lambda_client().invoke(
         FunctionName=os.environ["GRADE_FUNCTION_ARN"],
         InvocationType="Event",
-        Payload=json.dumps(
-            {
-                "submission_id": submission_id,
-                "challenge_id": challenge_id,
-                "patch": patch,
-                "user_id": user_id,
-                "login": claims.get("login", ""),
-                "avatar_url": claims.get("avatar", ""),
-                "seconds": body.get("seconds"),
-            }
-        ).encode("utf-8"),
+        Payload=json.dumps(grade_event).encode("utf-8"),
     )
     return _response(202, {"submission_id": submission_id, "status": "PENDING"})
 
@@ -592,6 +648,11 @@ def get_submission(submission_id: str) -> dict:
 def get_reveal(submission_id: str) -> dict:
     """Relays fn_reveal. The PASS check lives there, next to the only role that
     can read the answer, not here."""
+    if _local_grading():
+        from cloud.handlers import fn_reveal
+
+        result = fn_reveal.handler({"submission_id": submission_id}, None)
+        return _response(result["status"], result["body"])
     response = lambda_client().invoke(
         FunctionName=os.environ["REVEAL_FUNCTION_ARN"],
         InvocationType="RequestResponse",
