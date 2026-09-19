@@ -10,7 +10,7 @@ import { THEME_BOOT } from "@/lib/theme-boot";
 export const metadata: Metadata = {
   title: { default: "BugForge", template: "%s · BugForge" },
   description:
-    "Every repo is a debugging gym. Real mutations of real open-source repos, real stack traces, graded by the repo's own test suite.",
+    "Every repo is a debugging gym. Real bugs in real open-source repos, real stack traces, graded by the repo's own test suite.",
 };
 
 export const viewport: Viewport = {

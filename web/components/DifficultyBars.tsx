@@ -43,6 +43,43 @@ const METRICS: Metric[] = [
   },
 ];
 
+/**
+ * The same three definitions, spelled out rather than hidden behind a hover.
+ *
+ * The tooltips on the bars are unreachable on a touch screen and invisible to
+ * anyone who does not think to point at a 14px rectangle, which meant these
+ * three words appeared on screen nowhere they were defined. This is a
+ * `<details>` so it costs nothing until someone asks.
+ */
+export function DifficultyLegend({
+  breakdown,
+  failing,
+  total,
+  className = "",
+}: {
+  breakdown: Breakdown | null;
+  failing: number;
+  total: number;
+  className?: string;
+}) {
+  return (
+    <details className={`t-small text-muted ${className}`}>
+      <summary className="cursor-pointer marker:text-faint hover:text-text">what these measure</summary>
+      <dl className="mt-2 space-y-2">
+        {METRICS.map((metric) => (
+          <div key={metric.short}>
+            <dt className="text-text">
+              {metric.name}
+              {breakdown && <span className="text-muted"> &middot; {metric.value(breakdown, failing, total)}</span>}
+            </dt>
+            <dd>{metric.explain}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
 export function DifficultyBars({
   breakdown,
   failing,

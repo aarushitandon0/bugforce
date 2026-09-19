@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ApiError, getForge, type ForgeStatus, type StreamRow, type StreamVerdict } from "@/lib/api";
 import { REPLAY } from "@/lib/forge-data";
+import { forgeError } from "@/lib/forge-errors";
 import { clock, plural, repoDisplay, truncateLeft } from "@/lib/format";
 import { Cursor } from "./Cursor";
 import { Panel } from "./ui/Panel";
@@ -179,6 +180,22 @@ function Row({ row, locationWidth }: { row: StreamRow; locationWidth: number }) 
   );
 }
 
+/**
+ * What happened, then what to do about it, then the raw text -- in that order.
+ * It used to be the raw text alone.
+ */
+function FailureNote({ status, error, cause }: { status: string; error: string | null; cause: string | null }) {
+  const detail = [error, cause].filter(Boolean).join(" ");
+  const { what, next } = forgeError(status, detail);
+  return (
+    <div className="mt-3 animate-fade">
+      <div className="whitespace-pre-wrap text-gap">&#10007; {what}</div>
+      <div className="mt-1 whitespace-pre-wrap text-text">{next}</div>
+      {detail && <div className="mt-1 whitespace-pre-wrap text-muted">{detail.slice(0, 400)}</div>}
+    </div>
+  );
+}
+
 function Step({ done, name, children }: { done: boolean; name: string; children: React.ReactNode }) {
   return (
     <div className={`whitespace-pre animate-fade ${done ? "text-text" : "text-muted"}`}>
@@ -253,9 +270,13 @@ export function ForgeStream({
         <div className="flex w-full items-center justify-between gap-4 t-label text-muted">
         <span className="truncate normal-case tracking-normal">
           {replaying ? (
+            /* Said outright rather than implied by a chip in the corner: this
+               is a canned run, and the stats line under the left column is
+               that same run's totals. */
             <>
+              demo{" \u00b7 "}
               <span className="text-text">{REPLAY.display}</span>
-              {" \u00b7 "}
+              {" @ "}
               {REPLAY.commit}
             </>
           ) : executionId ? (
@@ -271,8 +292,8 @@ export function ForgeStream({
         <span className="shrink-0 tabular-nums">
           {elapsed && <>{elapsed} · </>}
           {replaying ? (
-            <span className="border border-line px-1.5 py-px" title="a real recorded forge, not a live one">
-              replay
+            <span className="rounded border border-line px-1.5 py-px" title="a real recorded forge, not a live one">
+              demo
             </span>
           ) : status ? (
             status.status.toLowerCase().replace("_", " ")
@@ -297,6 +318,18 @@ export function ForgeStream({
                   <span className="text-gap">{status.counts.gap}</span> test gaps
                 </span>
                 {status.counts.scoring > 0 && <span>{status.counts.scoring} scoring</span>}
+                {/*
+                 * The denominator, so a running tally cannot be read as a set
+                 * of final totals. It was only ever a partial count of the
+                 * candidates that landed on covered lines, which is a smaller
+                 * population than the "candidates" on the stats line beside it.
+                 */}
+                {status.candidates > 0 && (
+                  <span className="text-faint">
+                    {status.counts.keep + status.counts.drop + status.counts.gap + status.counts.scoring} of{" "}
+                    {status.candidates} classified
+                  </span>
+                )}
               </div>
             )}
             {legend && (
@@ -339,8 +372,8 @@ export function ForgeStream({
             {status.baseline && (
               <Step done={status.batches > 0} name="generate">
                 {status.batches > 0
-                  ? `${plural(status.candidates, "mutation")} on covered lines · ${plural(status.batches, "batch", "batches")}`
-                  : "locating AST mutations on covered lines…"}
+                  ? `${plural(status.candidates, "candidate")} on covered lines · ${plural(status.batches, "batch", "batches")}`
+                  : "locating candidates on covered lines…"}
               </Step>
             )}
 
@@ -349,24 +382,27 @@ export function ForgeStream({
               <Row key={row.id} row={row} locationWidth={locationWidth} />
             ))}
 
+            {/* Every stage carries the same glyph as the two above, so a run
+                reads as one checklist rather than two steps followed by a
+                run of loose sentences. */}
             {status.status === "RUNNING" && status.phase === "run" && (
-              <div className="mt-2 whitespace-pre text-muted">
-                · {status.batches_done} of {plural(status.batches, "batch", "batches")} run against their covering tests
-              </div>
+              <Step done={false} name="run">
+                {status.batches_done} of {plural(status.batches, "batch", "batches")} run against their covering tests
+              </Step>
             )}
             {status.status === "RUNNING" && status.phase === "score" && (
-              <div className="mt-2 whitespace-pre text-muted">
-                · full-suite run for each survivor · {status.counts.scoring} left
-              </div>
+              <Step done={false} name="score">
+                full-suite run for each survivor · {status.counts.scoring} left
+              </Step>
             )}
             {status.status === "RUNNING" && status.phase === "package" && (
-              <div className="mt-2 whitespace-pre text-muted">· naming, packaging trees, writing the gap report…</div>
+              <Step done={false} name="package">naming, packaging trees, writing the gap report…</Step>
             )}
 
             {status.status === "SUCCEEDED" && status.summary && (
               <div className="mt-3 animate-fade">
                 <div className="font-bold text-keep">
-                  {plural(status.summary.challenges_ready, "challenge")} ready ·{" "}
+                  {plural(status.summary.challenges_ready, "bug")} ready ·{" "}
                   {plural(status.summary.test_gaps, "test gap")} found
                 </div>
                 <div className="mt-1 flex flex-wrap gap-x-6 text-text">
@@ -385,11 +421,7 @@ export function ForgeStream({
             )}
 
             {finished && status.status !== "SUCCEEDED" && (
-              <div className="mt-3 whitespace-pre-wrap text-gap animate-fade">
-                ✗ forge {status.status.toLowerCase().replace("_", " ")}
-                {status.error && ` · ${status.error}`}
-                {status.cause && `\n  ${status.cause.slice(0, 400)}`}
-              </div>
+              <FailureNote status={status.status} error={status.error} cause={status.cause} />
             )}
           </>
         )}

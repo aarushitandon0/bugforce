@@ -1,18 +1,105 @@
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
+# ---------------------------------------------------------------
+# Private — never publish. Spoilers, local runs, personal notes.
+# ---------------------------------------------------------------
 
-# Environment
-.env
-.env.*
+# Challenge answer bundles: the patch that solves the bug.
+*-answers.tar.gz
+*answers.tar.gz
+**/answers/
 
-# Generated/cache
-cache/
+# Forge output: generated challenges, work trees, solved states.
 phase3_output/
 phase5_output/
+phase*_output/
+*_output/
+out/
+work/
 
-# Node
-web/node_modules/
-web/.next/
+# Cloned repos, venvs and baseline test runs from local forging.
+cache/
+.baseline_cache/
+.forge_cache/
+
+# Personal / assistant scratch
+.claude/
+.cursor/
+.aider*
+NOTES.md
+TODO.md
+scratch/
+*.local.md
+
+# ---------------------------------------------------------------
+# Secrets & credentials
+# ---------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/
+aws-exports.js
+amplify/
+samconfig.toml
+*.tfvars
+.terraform/
+
+# ---------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+dist/
+build/
+
+# ---------------------------------------------------------------
+# Node / Next.js
+# ---------------------------------------------------------------
+node_modules/
+.next/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------------------------------------------------------------
+# SAM / Lambda build artifacts
+# ---------------------------------------------------------------
+.aws-sam/
+packaged.yaml
+
+# ---------------------------------------------------------------
+# Editors / OS
+# ---------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------
+# Logs & temp
+# ---------------------------------------------------------------
+*.log
+tmp/
+*.tmp
+
+# ---------------------------------------------------------------
+# LocalStack state (infra/local/docker-compose.yml mounts it)
+# ---------------------------------------------------------------
+infra/local/volume/
+infra/local/.build/

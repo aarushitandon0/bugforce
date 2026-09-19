@@ -21,6 +21,7 @@ import tarfile
 from dataclasses import asdict
 from pathlib import Path
 
+from bugforge.ids import challenge_id
 from bugforge.models import Challenge, MutationSite
 from bugforge.select import ClassificationResult
 
@@ -57,9 +58,15 @@ def _rmtree(path: Path) -> None:
 
 
 def _make_challenge_id(repo: str, commit_sha: str, site: MutationSite) -> str:
-    stem = Path(site.path).stem
-    safe_repo = repo.replace("/", "_")
-    return f"{safe_repo}-{commit_sha[:10]}-{stem}-L{site.lineno}"
+    """The one id for this mutation, the same one the cloud pipeline writes.
+
+    This used to build its own -- `jd_tenacity-3e58094d3b-retry-L113` -- which
+    named the file and the line in a string that ends up in URLs and S3 keys,
+    and gave the same mutation a second identity depending on which entry point
+    packaged it. Two ids for one mutation is how the same bug ends up in the
+    challenges table twice.
+    """
+    return challenge_id(repo, commit_sha, site.path, site.lineno, site.operator_id, site.mutated_token)
 
 
 def _strip_project_name_metadata(text: str) -> str:

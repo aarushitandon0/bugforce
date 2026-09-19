@@ -332,10 +332,43 @@ def _query_repo(table_name: str, repo: str) -> list[dict]:
     return ddb_io.from_ddb(items)
 
 
-def difficulty_label(score: float) -> str:
-    if score < 5:
+def bands(scores: list[float]) -> tuple[float, float]:
+    """The two cuts that split a repo's scores into thirds.
+
+    Fixed cuts at 5 and 7 put 51 of jd/tenacity's 56 bugs in "medium", which
+    makes the word carry no information: two thirds of the grid wears the same
+    badge and the filter that uses it barely filters. The score is only
+    meaningful relative to the rest of the repo anyway -- a 6.5 is a hard bug
+    in a shallow codebase and an easy one in a deep one -- so the bands are cut
+    from that repo's own distribution.
+
+    Ties are not broken: if a third of the scores are identical, the band that
+    holds them is larger than a third. That is the honest answer, and it is
+    what `easy` means when a repo really does have eleven equally easy bugs.
+    """
+    ordered = sorted(scores)
+    if len(ordered) < 3:
+        return (float("-inf"), float("inf"))
+    return (ordered[len(ordered) // 3], ordered[(2 * len(ordered)) // 3])
+
+
+def difficulty_label(score: float, cuts: tuple[float, float] | None = None) -> str:
+    """Which third of its repo a score sits in.
+
+    `cuts` is None only where the caller genuinely has no corpus to compare
+    against (a repo with fewer than three bugs); the absolute fallback keeps
+    the field populated rather than inventing a band from one sample.
+    """
+    if cuts is None:
+        if score < 5:
+            return "easy"
+        if score < 7:
+            return "medium"
+        return "hard"
+    low, high = cuts
+    if score < low:
         return "easy"
-    if score < 7:
+    if score < high:
         return "medium"
     return "hard"
 
@@ -348,7 +381,7 @@ def histogram(scores: list[float]) -> list[int]:
     return counts
 
 
-def challenge_card(item: dict) -> dict:
+def challenge_card(item: dict, cuts: tuple[float, float] | None = None) -> dict:
     """The learner-facing projection of a challenges row. Allow-list, not deny-list."""
     breakdown = item.get("score_breakdown")
     score = float(item.get("difficulty_score", 0))
@@ -361,7 +394,7 @@ def challenge_card(item: dict) -> dict:
         "title": item.get("title", ""),
         "description": item.get("description", ""),
         "difficulty_score": score,
-        "difficulty_label": difficulty_label(score),
+        "difficulty_label": difficulty_label(score, cuts),
         "breakdown": (
             {key: breakdown[key] for key in ("displacement", "search_space", "noise", "d", "s", "n")}
             if breakdown
@@ -409,8 +442,9 @@ def get_repos() -> dict:
 def get_challenges(params: dict) -> dict:
     repo = params.get("repo")
     items = _query_repo(config.table("challenges"), repo) if repo else _scan(config.table("challenges"))
+    cuts = bands([float(i.get("difficulty_score", 0)) for i in items]) if repo else None
     listing = sorted(
-        (challenge_card(item) for item in items),
+        (challenge_card(item, cuts) for item in items),
         key=lambda c: (c["difficulty_score"], c["challenge_id"]),
     )
     return _response(200, {"challenges": listing, "count": len(listing)})
@@ -420,10 +454,14 @@ def get_challenge(challenge_id: str) -> dict:
     item = ddb_io.get(config.table("challenges"), {"challenge_id": challenge_id})
     if not item:
         return _response(404, {"error": "no such challenge"})
+    # The band is a fact about this bug's place among its repo's, so the repo's
+    # distribution has to be in hand before the label means anything.
+    siblings = _query_repo(config.table("challenges"), item.get("repo", "")) if item.get("repo") else []
+    cuts = bands([float(i.get("difficulty_score", 0)) for i in siblings]) if siblings else None
     return _response(
         200,
         {
-            **challenge_card(item),
+            **challenge_card(item, cuts),
             "failing_tests": item.get("failing_tests", []),
             "tree_url_path": f"/challenges/{challenge_id}/tree",
         },

@@ -248,6 +248,9 @@ ANSWER_FIELDS = {"diff", "patch", "file_path", "path", "lineno", "operator", "op
 
 def test_get_challenge_exposes_the_card_and_no_answer_fields(env, monkeypatch):
     monkeypatch.setattr(fn_api.ddb_io, "get", lambda table, key: dict(ROW))
+    # The difficulty band is a percentile within the repo, so the detail route
+    # reads the repo's other scores to place this one.
+    monkeypatch.setattr(fn_api, "_query_repo", lambda table, repo: [dict(ROW)])
     body = _body(fn_api.get_challenge(ROW["challenge_id"]))
 
     assert not ANSWER_FIELDS & set(body)
@@ -257,8 +260,21 @@ def test_get_challenge_exposes_the_card_and_no_answer_fields(env, monkeypatch):
 
 
 @pytest.mark.parametrize("score, label", [(3.0, "easy"), (4.99, "easy"), (5.0, "medium"), (7.0, "hard")])
-def test_difficulty_label(score, label):
+def test_difficulty_label_falls_back_to_absolute_cuts_without_a_corpus(score, label):
     assert fn_api.difficulty_label(score) == label
+
+
+def test_bands_split_a_repo_into_thirds():
+    """Fixed cuts put two thirds of jd/tenacity in "medium", which made the
+    word carry no information. The bands come from the repo's own spread."""
+    scores = [3.0, 3.1, 3.2, 6.0, 6.1, 6.2, 9.0, 9.1, 9.2]
+    cuts = fn_api.bands(scores)
+    labels = [fn_api.difficulty_label(s, cuts) for s in scores]
+    assert labels == ["easy"] * 3 + ["medium"] * 3 + ["hard"] * 3
+
+
+def test_bands_decline_to_guess_from_fewer_than_three_scores():
+    assert fn_api.difficulty_label(9.9, fn_api.bands([9.9, 3.0])) == "medium"
 
 
 def test_histogram_bins_clamp_to_the_edges():

@@ -92,12 +92,24 @@ def _secret(env_name: str) -> str:
     return _secret_cache[arn]
 
 
+# What the template stores when the stack is deployed without a GitHub OAuth
+# app. Secrets Manager will not hold an empty string, so "absent" has to be
+# spelled with a value.
+UNSET = "unset"
+
+
 def client_id() -> str:
-    return _secret("GITHUB_CLIENT_ID_SECRET_ARN")
+    value = _secret("GITHUB_CLIENT_ID_SECRET_ARN")
+    if value == UNSET:
+        raise AuthError("sign-in is not configured on this deployment")
+    return value
 
 
 def client_secret() -> str:
-    return _secret("GITHUB_CLIENT_SECRET_ARN")
+    value = _secret("GITHUB_CLIENT_SECRET_ARN")
+    if value == UNSET:
+        raise AuthError("sign-in is not configured on this deployment")
+    return value
 
 
 def signing_key() -> bytes:
@@ -212,15 +224,32 @@ def cookie(event: dict, name: str) -> str | None:
     return None
 
 
+def cookie_flags() -> str:
+    """The attributes every cookie this module sets carries.
+
+    Deployed, the web app and the API are on different registrable domains, so
+    the cookie has to be `SameSite=None` to be sent at all, and `Secure` is
+    mandatory alongside it.
+
+    Locally there is no TLS, and a browser drops a `Secure` cookie from a
+    plain-http origin unless that origin is literally localhost. Setting
+    BUGFORGE_INSECURE_COOKIES=true swaps in the first-party pair -- which is
+    correct there, because the local setup proxies the API under the web app's
+    own origin (see infra/local/README.md). It is a local-development switch
+    and nothing else: on http, `Secure`-less is what the browser would keep,
+    and on a real deployment leaving it unset keeps the cross-site pair.
+    """
+    if os.environ.get("BUGFORGE_INSECURE_COOKIES", "").lower() == "true":
+        return "HttpOnly; SameSite=Lax"
+    return "HttpOnly; Secure; SameSite=None"
+
+
 def set_cookie(name: str, value: str, max_age: int) -> str:
-    # SameSite=None is required, not lax security: the web app and the API are
-    # on different registrable domains, so a Lax cookie would never be sent on
-    # the app's fetch() at all. Secure is mandatory alongside it.
-    return f"{name}={value}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age={max_age}"
+    return f"{name}={value}; Path=/; {cookie_flags()}; Max-Age={max_age}"
 
 
 def clear_cookie(name: str) -> str:
-    return f"{name}=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0"
+    return f"{name}=; Path=/; {cookie_flags()}; Max-Age=0"
 
 
 # ---------------------------------------------------------------------------

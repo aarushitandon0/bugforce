@@ -71,9 +71,13 @@ const themeSpec = {
     ".cm-activeLineGutter": { backgroundColor: C.panel, color: C.text },
     ".cm-frames": { width: "18px" },
     ".cm-frames .cm-gutterElement": { display: "flex", alignItems: "center", justifyContent: "center" },
-    ".cm-frame-mark": { display: "block", width: "7px", height: "7px" },
-    ".cm-frame-mark.is-frame": { border: `1px solid ${C.causal}` },
-    ".cm-frame-mark.is-visited": { backgroundColor: C.causal },
+    /* Shape carries the meaning and colour only reinforces it: a FILLED square
+       is the frame that raised, a HOLLOW square is a frame above it. Visited
+       thickens the border rather than filling it, so "visited causal frame"
+       can never be mistaken for "raised here". */
+    ".cm-frame-mark": { display: "block", width: "7px", height: "7px", boxSizing: "border-box" },
+    ".cm-frame-mark.is-frame": { border: `1px solid ${C.causal}`, backgroundColor: "transparent" },
+    ".cm-frame-mark.is-frame.is-visited": { borderWidth: "2px" },
     ".cm-frame-mark.is-exception": { backgroundColor: C.raise, border: `1px solid ${C.raise}` },
     ".cm-frame-line": { backgroundColor: mix(C.causal, 7) },
     // the failing line: a 6% amber wash plus a solid left border, so it stays
@@ -187,7 +191,14 @@ class FrameMarker extends GutterMarker {
   toDOM() {
     const el = document.createElement("span");
     el.className = `cm-frame-mark ${this.exception ? "is-exception" : "is-frame"}${this.visited ? " is-visited" : ""}`;
-    el.title = this.title;
+    /* The glyph is explained on the glyph. The rail is a scroll away and a
+       marker is the kind of thing you point at before you go looking. */
+    const legend = this.exception
+      ? "filled square: the frame that raised"
+      : `hollow square: a frame above the failure${this.visited ? ", visited" : ""}`;
+    el.title = `${this.title}
+${legend}`;
+    el.setAttribute("aria-label", legend);
     return el;
   }
 }

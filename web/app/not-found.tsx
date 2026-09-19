@@ -1,17 +1,15 @@
-import Link from "next/link";
 import { Shell } from "@/components/Shell";
+import { ArrowLink } from "@/components/ui/ArrowLink";
 
 export default function NotFound() {
   return (
     <Shell>
-      <div className="pt-20">
-        <p className="text-gap">✗ 404</p>
-        <h1 className="mt-2 text-[28px] font-bold text-text">nothing at this path.</h1>
-        <p className="mt-4">
-          <Link href="/" className="link">
-            back to the forge →
-          </Link>
-        </p>
+      <div className="pt-16">
+        <p className="t-small text-gap">&#10007; 404</p>
+        <h1 className="t-h1 mt-2 text-text">nothing at this path.</h1>
+        <ArrowLink href="/" className="mt-4" tone="text-accent">
+          back to the forge
+        </ArrowLink>
       </div>
     </Shell>
   );

@@ -1,0 +1,4 @@
+# Build It track: everything below runs BugForge on this machine, with no AWS
+# account and nothing billable. Install alongside requirements.txt.
+aws-sam-cli-local>=1.4      # `samlocal` -- SAM CLI pointed at LocalStack
+awscli-local>=0.22          # `awslocal` -- AWS CLI pointed at LocalStack

@@ -25,10 +25,17 @@ Parameters:
     Description: SPDX licence id of the target repo, shown on every challenge card.
   WebOrigin:
     Type: String
-    Default: "*"
+    Default: "http://localhost:3100"
     Description: >
-      Origin allowed to call the API and fetch presigned trees (CORS). Set it to
-      the Amplify URL, e.g. https://main.d1234abcd.amplifyapp.com, once known.
+      The ONE origin allowed to call the API and fetch presigned trees (CORS).
+      Deployed, set it to the Amplify URL, e.g.
+      https://main.d1234abcd.amplifyapp.com, once known.
+
+      It cannot be "*": the session cookie is credentialed, and
+      AllowCredentials is incompatible with a wildcard origin by spec -- a
+      wildcard here does not loosen CORS, it fails the stack. The default is
+      the local dev server (infra/local/README.md), which is the only origin
+      that is knowable before a deploy.
   GitHubClientId:
     Type: String
     Default: ""
@@ -53,6 +60,16 @@ Parameters:
       compares it on both legs, so it is configured, never derived from the
       request (whose Host header a caller controls).
 
+  InsecureCookies:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Local development only (BUGFORGE_INSECURE_COOKIES). Drops `Secure` and
+      goes SameSite=Lax on the session cookie, which is what a browser will
+      actually keep when the app is served over plain http from localhost.
+      Never set this on a real deployment.
+
   DisableBedrock:
     Type: String
     Default: "false"
@@ -61,6 +78,16 @@ Parameters:
   BedrockModelId:
     Type: String
     Default: anthropic.claude-opus-5
+
+Conditions:
+  # Secrets Manager rejects an empty SecretString outright, so deploying with
+  # sign-in switched off -- which the parameters explicitly allow -- would fail
+  # at the secret rather than come up without sign-in. Store a placeholder
+  # instead; cloud/auth.py treats it as "not configured".
+  # Both halves, because either one alone cannot complete a sign-in.
+  HasGitHubApp: !And
+    - !Not [!Equals [!Ref GitHubClientId, ""]]
+    - !Not [!Equals [!Ref GitHubClientSecret, ""]]
 
 Globals:
   Function:
@@ -215,13 +242,13 @@ Resources:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${AWS::StackName}-github-client-id"
-      SecretString: !Ref GitHubClientId
+      SecretString: !If [HasGitHubApp, !Ref GitHubClientId, "unset"]
 
   GitHubClientSecretSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub "${AWS::StackName}-github-client-secret"
-      SecretString: !Ref GitHubClientSecret
+      SecretString: !If [HasGitHubApp, !Ref GitHubClientSecret, "unset"]
 
   SessionSigningSecret:
     Type: AWS::SecretsManager::Secret
@@ -642,6 +669,7 @@ Resources:
       Environment:
         Variables:
           OAUTH_REDIRECT_URI: !Ref OAuthRedirectUri
+          BUGFORGE_INSECURE_COOKIES: !Ref InsecureCookies
           GITHUB_CLIENT_ID_SECRET_ARN: !Ref GitHubClientIdSecret
           GITHUB_CLIENT_SECRET_ARN: !Ref GitHubClientSecretSecret
           SESSION_SIGNING_SECRET_ARN: !Ref SessionSigningSecret

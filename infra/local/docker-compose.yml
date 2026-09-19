@@ -1,0 +1,27 @@
+# LocalStack: the whole BugForge backend, on this machine, with no AWS account.
+#
+#   docker compose -f infra/local/docker-compose.yml up -d
+#
+# Everything the SAM template asks for -- S3, DynamoDB, Lambda, Step Functions,
+# Secrets Manager, API Gateway, IAM, CloudFormation -- is served on :4566.
+# Nothing here reaches aws.amazon.com and nothing here can be billed.
+services:
+  localstack:
+    image: localstack/localstack:4
+    container_name: bugforge-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      # The pipeline lambdas are container images with a whole repo and its
+      # test suite baked in; they are slow to cold-start and fn_baseline is
+      # allowed 15 minutes. Don't let LocalStack time the invocation out first.
+      LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT: "900"
+      # Keep a warm container per function between invocations -- otherwise
+      # every Step Functions step pays the image start-up again.
+      LAMBDA_KEEPALIVE_MS: "600000"
+      DEBUG: "0"
+    volumes:
+      # LocalStack starts the lambda containers itself, on this machine's
+      # Docker (or Finch) daemon, which is why it needs the socket.
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./volume:/var/lib/localstack"

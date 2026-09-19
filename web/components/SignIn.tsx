@@ -5,7 +5,7 @@
  * shows in place of a submit button.
  *
  * Signing in changes exactly two things: submissions are attributed to you,
- * and your solved challenges follow you between devices. Browsing, reading a
+ * and your solved bugs follow you between devices. Browsing, reading a
  * traceback and editing all work signed out, so nothing here blocks a page.
  */
 
@@ -13,6 +13,7 @@ import { LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { apiConfigured } from "@/lib/api";
 import { consumeAuthParams, useSession } from "@/lib/session";
+import { Button } from "./ui/Button";
 
 /**
  * The GitHub mark, inline. lucide-react dropped its brand icons, and this is
@@ -51,18 +52,14 @@ export function SignIn() {
     return (
       <div className="flex items-center gap-3">
         {error && (
-          <span className="hidden text-[11px] text-gap sm:inline" role="alert">
+          <span className="hidden t-small text-gap sm:inline" role="alert">
             {error}
           </span>
         )}
-        <button
-          type="button"
-          onClick={signIn}
-          className="flex items-center gap-1.5 border border-line px-2 py-0.5 text-muted outline-none transition-colors duration-[120ms] hover:border-text hover:text-text focus-visible:border-text focus-visible:text-text"
-        >
+        <Button variant="secondary" size="sm" onClick={signIn}>
           <GithubMark />
           sign in
-        </button>
+        </Button>
       </div>
     );
   }
@@ -96,19 +93,18 @@ export function SignIn() {
 export function SignInToSubmit({ className = "" }: { className?: string }) {
   const { signIn } = useSession();
   return (
-    <div className={`border border-line bg-surface-2 p-3 ${className}`}>
-      <p className="text-muted">
-        Grading runs the repo&apos;s suite against your patch and records the solve. Sign in with
-        GitHub so it is yours — your progress then follows you between devices.
-      </p>
-      <button
-        type="button"
-        onClick={signIn}
-        className="mt-2 flex items-center gap-1.5 border border-line px-2 py-1 text-text outline-none transition-colors duration-[120ms] hover:border-text focus-visible:border-text"
-      >
+    /*
+     * One line and a button. It used to be a four-line paragraph inside its
+     * own filled box, which made it the loudest thing on a screen you come to
+     * in order to read a stack trace. The value comes first; the mechanics of
+     * grading are on the landing page, where they belong.
+     */
+    <div className={`rounded border border-line bg-surface-2 p-3 ${className}`}>
+      <p className="t-small text-muted">Progress follows you between devices, and a solve is recorded as yours.</p>
+      <Button variant="secondary" size="sm" className="mt-2" onClick={signIn}>
         <GithubMark />
         sign in with github
-      </button>
+      </Button>
     </div>
   );
 }

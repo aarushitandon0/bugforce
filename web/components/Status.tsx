@@ -31,9 +31,9 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <header className="pt-14 pb-8">
+    <header className="pt-16 pb-8">
       {eyebrow && <p className="label mb-3">{eyebrow}</p>}
-      <h1 className="text-[clamp(24px,3.4vw,32px)] font-bold leading-[1.2] tracking-[-0.015em] text-text">{title}</h1>
+      <h1 className="t-h1 text-text">{title}</h1>
       {children && <div className="mt-3 max-w-[72ch] text-muted">{children}</div>}
     </header>
   );

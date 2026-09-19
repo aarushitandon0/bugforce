@@ -62,7 +62,7 @@ function toMarkdown(repo: string, gaps: Gap[]): string {
     `## Test gaps in ${repoDisplay(repo)} @ ${sha}`,
     "",
     `${plural(gaps.length, "single-token change")} to lines the test suite executes that no test noticed.`,
-    "Found by mutation testing with BugForge: each line was mutated and the tests covering it were run.",
+    "Found by BugForge: every covered line was broken one token at a time and the tests covering it were run.",
     "",
   ];
   for (const gap of gaps) {
@@ -88,7 +88,7 @@ function RepoReport({ repo, gaps }: { repo: string; gaps: Gap[] }) {
           {repoDisplay(repo)}
           <span className="font-normal text-muted">
             {" "}
-            @ {gaps[0]?.commit_sha.slice(0, 10)} · {plural(gaps.length, "untested mutation")} in {plural(byFile.size, "file")}
+            @ {gaps[0]?.commit_sha.slice(0, 10)} · {plural(gaps.length, "test gap")} in {plural(byFile.size, "file")}
           </span>
         </h2>
         <button

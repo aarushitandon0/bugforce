@@ -9,6 +9,7 @@ import { readLocal, readSolved } from "@/lib/progress";
 import { dedentSplit, parseUnifiedDiff, splitReveal, type TokenSplit } from "@/lib/reveal";
 import { useApi } from "@/lib/useApi";
 import { solveHref } from "../ChallengeCard";
+import { ButtonLink, buttonClass } from "../ui/Button";
 import { Replay } from "../result/Replay";
 import { Cursor } from "../Cursor";
 import { ErrorLine, Loading } from "../Status";
@@ -109,7 +110,7 @@ export function Result() {
       </p>
 
       {/* the payoff: one token */}
-      <section className="mt-16" aria-label="the mutation">
+      <section className="mt-16" aria-label="the bug">
         <h2 className="label">it all hinged on one token</h2>
         <div
           className={`mt-6 flex flex-wrap items-baseline gap-x-[0.5em] gap-y-3 font-bold tracking-[-0.03em] ${heroSize(
@@ -163,7 +164,7 @@ export function Result() {
 
         <details className="group mt-3 border border-line">
           <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-[12px] text-muted hover:text-text">
-            <span>the full mutation diff, as applied</span>
+            <span>the full diff, as applied</span>
             <span aria-hidden className="group-open:hidden">▸</span>
             <span aria-hidden className="hidden group-open:inline">▾</span>
           </summary>
@@ -258,7 +259,7 @@ export function Result() {
           </dd>
           {data.license && (
             <>
-              <dt className="text-muted">licence</dt>
+              <dt className="text-muted">license</dt>
               <dd className="text-text">{data.license}</dd>
             </>
           )}
@@ -267,30 +268,27 @@ export function Result() {
         </dl>
 
         <div className="mt-8 flex flex-wrap gap-3">
+          {/* One primary per screen, and after a PASS the forward move is the
+              next bug -- not the GitHub link, which used to be the only
+              inverting control in the whole app. */}
+          {next && (
+            <ButtonLink variant="primary" size="md" arrow href={solveHref(next.challenge_id)}>
+              next bug: {next.title}
+            </ButtonLink>
+          )}
           <a
             href={data.github_url}
             target="_blank"
             rel="noreferrer"
-            className="border border-text px-4 py-2.5 font-bold text-text transition-colors duration-[120ms] hover:bg-text hover:text-surface-1"
+            className={buttonClass("secondary", "md")}
           >
-            view {data.file_path.split("/").pop()}:{data.lineno} on GitHub ↗
+            view {data.file_path.split("/").pop()}:{data.lineno} on GitHub &#8599;
           </a>
-          {next && (
-            <Link
-              href={solveHref(next.challenge_id)}
-              className="border border-line px-4 py-2.5 text-text transition-colors duration-[120ms] hover:border-line-strong"
-            >
-              next bug: {next.title} →
-            </Link>
-          )}
-          <Link
-            href={`/repo/?name=${encodeURIComponent(data.repo)}`}
-            className="border border-line px-4 py-2.5 text-muted transition-colors duration-[120ms] hover:border-line-strong hover:text-text"
-          >
+          <ButtonLink variant="ghost" size="md" href={`/repo/?name=${encodeURIComponent(data.repo)}`}>
             {solvedCount !== null && total !== null
               ? `${solvedCount} of ${total} bugs in ${repoShort(data.repo)} solved`
               : `back to ${repoShort(data.repo)}`}
-          </Link>
+          </ButtonLink>
         </div>
       </section>
     </article>

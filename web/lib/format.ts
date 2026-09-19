@@ -80,3 +80,17 @@ export function byteLength(text: string): number {
 export function truncateLeft(text: string, max: number): string {
   return text.length <= max ? text : "…" + text.slice(text.length - max + 1);
 }
+
+/**
+ * The scope a challenge lives in, read off its title.
+ *
+ * Titles are generated as `<Operator> in <scope>[:line]` ("Return in
+ * wait_base:51"), so the scope is the only locating fact the API is willing to
+ * publish -- the file and the line are deliberately withheld (see
+ * cloud/handlers/fn_api.py). It is enough to cluster related bugs together,
+ * which is what the course page's grouping needs.
+ */
+export function challengeScope(title: string): string {
+  const match = / in ([^:]+)(?::\d+)?\s*$/.exec(title.trim());
+  return match ? match[1].trim() : "other";
+}

@@ -78,6 +78,7 @@ def test_submitting_with_a_forged_cookie_is_refused(env, grader):
 def test_browsing_never_requires_a_session(env, monkeypatch):
     monkeypatch.setattr(fn_api.ddb_io, "get", lambda table, key: dict(CHALLENGE))
     monkeypatch.setattr(fn_api, "_scan", lambda table: [])
+    monkeypatch.setattr(fn_api, "_query_repo", lambda table, repo: [dict(CHALLENGE)])
     for route, call in [
         ("GET /challenges/{id}", lambda: fn_api.get_challenge(CHALLENGE["challenge_id"])),
         ("GET /gaps", lambda: fn_api.get_gaps({})),

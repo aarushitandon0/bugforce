@@ -127,6 +127,42 @@ def test_clearing_the_cookie_expires_it_immediately():
     assert "Max-Age=0" in auth.clear_cookie(auth.COOKIE_NAME)
 
 
+def test_local_mode_drops_secure_and_goes_first_party(monkeypatch):
+    # On plain http a browser discards a Secure cookie, so the local setup
+    # proxies the API under the web app's own origin and asks for the
+    # first-party pair instead. Getting this wrong fails silently -- the
+    # cookie is simply never stored and sign-in appears to do nothing.
+    monkeypatch.setenv("BUGFORGE_INSECURE_COOKIES", "true")
+    header = auth.set_cookie(auth.COOKIE_NAME, "v", 60)
+    assert "HttpOnly" in header
+    assert "Secure" not in header
+    assert "SameSite=Lax" in header
+    assert "Secure" not in auth.clear_cookie(auth.COOKIE_NAME)
+
+
+def test_the_unset_placeholder_reads_as_not_configured(monkeypatch):
+    # Secrets Manager will not store an empty string, so a stack deployed with
+    # no OAuth app stores "unset". Without this, sign-in would send the learner
+    # to github.com with a nonsense client_id and a GitHub error page; the
+    # handler turns an AuthError into "sign-in is not configured" instead.
+    monkeypatch.setenv("GITHUB_CLIENT_ID_SECRET_ARN_VALUE", auth.UNSET)
+    monkeypatch.setenv("GITHUB_CLIENT_SECRET_ARN_VALUE", auth.UNSET)
+    with pytest.raises(auth.AuthError):
+        auth.client_id()
+    with pytest.raises(auth.AuthError):
+        auth.client_secret()
+
+
+def test_a_real_client_id_still_comes_back(monkeypatch):
+    monkeypatch.setenv("GITHUB_CLIENT_ID_SECRET_ARN_VALUE", "Ov23liREAL")
+    assert auth.client_id() == "Ov23liREAL"
+
+
+def test_the_switch_is_off_unless_it_is_exactly_true(monkeypatch):
+    monkeypatch.setenv("BUGFORGE_INSECURE_COOKIES", "1")
+    assert "Secure" in auth.set_cookie(auth.COOKIE_NAME, "v", 60)
+
+
 # ---------------------------------------------------------------------------
 # OAuth state
 # ---------------------------------------------------------------------------

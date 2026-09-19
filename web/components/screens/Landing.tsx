@@ -19,6 +19,42 @@ import { StatLine } from "../ui/StatLine";
  */
 const NOT_VETTED = ["psf/requests", "arrow-py/arrow"];
 
+/*
+ * What is forgeable is a property of the DEPLOYED STACK, not of the build.
+ * One stack carries one image and an image carries one repo, so the vetted
+ * list can name repos this stack has no image for. Offering those as live
+ * chips walks the reader straight into a 422; the build-time list is only
+ * good for display names and languages, and GET /repos is the truth.
+ */
+const VETTED_BY_URL = new Map(VETTED_REPOS.map((r) => [normalizeRepoUrl(r.url), r]));
+
+interface Chip {
+  display: string;
+  language: string;
+}
+
+function chipsFor(forgeable: Forgeable[] | null): { ready: Chip[]; pending: string[] } {
+  // Until the first response lands, show the vetted list rather than an empty
+  // row: it is the best guess available and it stops the row from popping in.
+  if (forgeable === null) {
+    return { ready: VETTED_REPOS.map((r) => ({ display: r.display, language: r.language })), pending: NOT_VETTED };
+  }
+  const readyUrls = new Set(forgeable.map((f) => normalizeRepoUrl(f.url)));
+  return {
+    ready: forgeable.map((f) => {
+      const vetted = VETTED_BY_URL.get(normalizeRepoUrl(f.url));
+      return { display: vetted?.display ?? repoDisplay(f.repo), language: vetted?.language ?? "python" };
+    }),
+    // A vetted repo with no image on this stack is in exactly the position an
+    // unvetted one is in, and says the same thing. NOT_VETTED is a static
+    // list, so filter it too: a stack that HAS an image for one of them would
+    // otherwise render it twice, live and "not forged yet" at once.
+    pending: [...VETTED_REPOS.map((r) => r.display), ...NOT_VETTED].filter(
+      (display) => !readyUrls.has(normalizeRepoUrl(display)),
+    ),
+  };
+}
+
 /* The whole pipeline in three lines. It fills the column under the input, and
  * it is the part a first-time reader actually needs: nothing here is a model
  * inventing a bug. */
@@ -96,9 +132,7 @@ export function Landing() {
     }
   }
 
-  // The vetted list is baked in at build time from infra/docker/vetted_repos.json,
-  // so a chip can never offer a repo that has no image.
-  const examples = VETTED_REPOS.map((r) => ({ display: r.display, language: r.language }));
+  const { ready: examples, pending } = chipsFor(forgeable);
   const chip = buttonClass("secondary", "sm");
 
   return (
@@ -189,7 +223,7 @@ export function Landing() {
               <span className="text-muted">{rulesFor(language).label}</span>
             </button>
           ))}
-          {NOT_VETTED.map((repo) => (
+          {pending.map((repo) => (
             <span key={repo} className={`${chip} text-muted`}>
               {repo}
               <span className="text-faint">&middot; not forged yet</span>

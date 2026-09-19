@@ -28,13 +28,13 @@ import { useTheme } from "@/lib/theme";
 import { LABEL_COLOR } from "../ChallengeCard";
 import { SignInToSubmit } from "../SignIn";
 import { Cursor } from "../Cursor";
-import { DifficultyBars } from "../DifficultyBars";
+import { DifficultyBars, DifficultyLegend } from "../DifficultyBars";
 import { SiteHeader } from "../Shell";
-import { ThemeToggle } from "../ThemeToggle";
 import { ActivityBar, type PanelId } from "../solve/ActivityBar";
 import { BottomPanel, type BottomTab } from "../solve/BottomPanel";
 import { Breadcrumbs } from "../solve/Breadcrumbs";
 import { FileTree } from "../solve/FileTree";
+import { GutterKey } from "../solve/GutterKey";
 import { Resizer } from "../solve/Resizer";
 import { Spine } from "../solve/Spine";
 
@@ -104,7 +104,7 @@ function useBundle(id: string) {
         if (!cancelled) setBundle({ detail, tree, frames, resolved });
       } catch (e) {
         if (cancelled) return;
-        if (e instanceof ApiError && e.status === 404) setError("no such challenge");
+        if (e instanceof ApiError && e.status === 404) setError("no such bug");
         else setError(e instanceof Error ? e.message : String(e));
       }
     })();
@@ -185,7 +185,7 @@ export function Solve() {
   if (!id) {
     return (
       <Bare>
-        <p className="p-6 text-gap">✗ no challenge named in the URL</p>
+        <p className="p-6 text-gap">✗ no bug named in the URL</p>
       </Bare>
     );
   }
@@ -701,7 +701,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   const activeReadOnly =
     active !== null && (rules.isTestPath(active) || !active.endsWith(rules.sourceSuffix));
   const lastAttempt = attempts[attempts.length - 1];
-  const statusName = `${repoShort(detail.repo)}/${slug(detail.title) || "challenge"}`;
+  const statusName = `${repoShort(detail.repo)}/${slug(detail.title) || "bug"}`;
 
   // the breadcrumb's tail: the def/class the caret sits inside
   const scope = useMemo(() => {
@@ -722,18 +722,20 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
 
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh">
-      {/* the breadcrumb row: a back affordance instead of a site nav */}
-      <header className="flex h-9 shrink-0 items-center gap-3 border-b border-line bg-surface-2 px-3 text-[11.5px]">
-        <Link
-          href={`/repo/?name=${encodeURIComponent(detail.repo)}`}
-          className="shrink-0 text-muted outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
-        >
-          &larr; {repoDisplay(detail.repo)} course
-        </Link>
-        <span aria-hidden className="h-4 w-px shrink-0 bg-line-strong" />
-        <Breadcrumbs path={active} scope={scope} onReveal={revealInTree} />
-        <ThemeToggle className="ml-auto shrink-0" />
-      </header>
+      {/* the same site nav as every other route, in its compact box, with the
+          back link and the breadcrumbs riding in the middle of it */}
+      <div className="shrink-0">
+        <SiteHeader compact>
+          <Link
+            href={`/repo/?name=${encodeURIComponent(detail.repo)}`}
+            className="shrink-0 text-muted transition-colors duration-[120ms] hover:text-text"
+          >
+            &larr; {repoShort(detail.repo)}
+          </Link>
+          <span aria-hidden className="h-4 w-px shrink-0 bg-line-strong" />
+          <Breadcrumbs path={active} scope={scope} onReveal={revealInTree} />
+        </SiteHeader>
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <ActivityBar
@@ -817,7 +819,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                   <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
                     <dt className="text-muted">repo</dt>
                     <dd className="truncate text-text">{repoDisplay(detail.repo)}</dd>
-                    <dt className="text-muted">licence</dt>
+                    <dt className="text-muted">license</dt>
                     <dd className="truncate text-text">{detail.license || "—"}</dd>
                     <dt className="text-muted">language</dt>
                     <dd className="text-text">{detail.language.toLowerCase()}</dd>
@@ -902,7 +904,11 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                 );
               })}
             </div>
-            <div className="flex shrink-0 items-center gap-3 px-3 text-[11px] text-muted">
+            <div className="flex shrink-0 items-center gap-3 px-3 t-small text-muted">
+              {/* the key, beside the gutter it describes */}
+              {active !== null && (marksByPath.get(active)?.length ?? 0) > 0 && (
+                <GutterKey inline className="hidden md:flex" />
+              )}
               {activeReadOnly && (
                 <span title="test files and non-Python files can't be patched">read-only &middot; the suite is the judge</span>
               )}
@@ -949,67 +955,90 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
           onResize={(right) => resize({ right })}
         />
 
-        {/* RIGHT: what stays put -- difficulty, the clock, the keys */}
+        {/*
+         * RIGHT rail, in the order a reader needs it: what the bug is, how to
+         * read the gutter, how to drive the keyboard, the clock, and -- last --
+         * sign-in. Sign-in used to be the largest, highest-contrast block on a
+         * screen whose job is reading a stack trace.
+         */}
         <aside
-          className="flex min-h-0 shrink-0 flex-col border-t border-line lg:border-t-0 lg:border-l"
+          className="flex min-h-0 shrink-0 flex-col overflow-y-auto border-t border-line lg:border-t-0 lg:border-l"
           style={{ width: layout.right, maxWidth: "100%" }}
-          aria-label="challenge"
+          aria-label="bug"
         >
           <div className="shrink-0 border-b border-line px-4 pt-3 pb-4">
             <div className="flex items-start justify-between gap-3">
-              <p className="label">
+              <p className="t-label">
                 <span className={LABEL_COLOR[detail.difficulty_label]}>{detail.difficulty_label}</span>
                 <span className="text-muted"> &middot; {detail.language.toLowerCase()}</span>
               </p>
+              {/* the three measured inputs, with their tooltips: removed from
+                  the course grid, kept here, where you are choosing how to
+                  attack the bug rather than which bug to take */}
               <DifficultyBars breakdown={detail.breakdown} failing={detail.failing_test_count} total={detail.total_tests} />
             </div>
-            <h1 className="mt-1 text-[16px] font-bold leading-snug text-text">{detail.title}</h1>
-            <p className="mt-2 text-[12px] leading-[1.6] text-text/90">{detail.description}</p>
+            <h1 className="t-h2 mt-1 text-text">{detail.title}</h1>
+            <p className="mt-2 t-small text-muted">{detail.description}</p>
+            <DifficultyLegend
+              className="mt-3"
+              breakdown={detail.breakdown}
+              failing={detail.failing_test_count}
+              total={detail.total_tests}
+            />
           </div>
 
-          <div className="flex shrink-0 items-end justify-between gap-3 border-b border-line px-4 py-3">
-            <div>
+          <div className="shrink-0 border-b border-line px-4 py-3">
+            <h2 className="label">the gutter</h2>
+            <GutterKey className="mt-2" />
+            <p className="mt-3 t-small text-muted">
+              the trace shows where it failed, not where it broke. the amber row is where it raised; the violet marks
+              are the frames above it.
+            </p>
+          </div>
+
+          {/* muted rather than faint, and a two-column grid that wraps instead
+              of running off the right edge of the rail */}
+          <div className="shrink-0 border-b border-line px-4 py-3">
+            <h2 className="label">keys</h2>
+            <dl className="mt-2 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 t-small text-muted">
+              <dt className="whitespace-nowrap text-text">{mod}&crarr;</dt>
+              <dd className="min-w-0">submit</dd>
+              <dt className="whitespace-nowrap text-text">
+                {alt}[ {alt}]
+              </dt>
+              <dd className="min-w-0">walk trace</dd>
+              <dt className="whitespace-nowrap text-text">{alt}w</dt>
+              <dd className="min-w-0">close tab</dd>
+              <dt className="whitespace-nowrap text-text">{mod}f</dt>
+              <dd className="min-w-0">find</dd>
+            </dl>
+          </div>
+
+          {/* the clock is not scored -- the leaderboard ranks on score and
+              solved count -- so it is a fact about your session, at the size
+              every other fact on this rail gets */}
+          <div className="shrink-0 border-b border-line px-4 py-3">
+            <div className="flex items-baseline justify-between gap-3">
               <h2 className="label">time</h2>
               <p
-                className={`mt-0.5 text-[28px] font-bold leading-none tabular-nums tracking-[-0.02em] ${solvedAt ? "text-keep" : "text-text"}`}
+                className={`t-small tabular-nums ${solvedAt ? "text-keep" : "text-text"}`}
                 role="timer"
-                aria-label="time on this challenge"
+                aria-label="time on this bug"
               >
                 {clock(elapsed)}
               </p>
             </div>
-            <dl className="grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
-              <dt className="text-right text-text">{mod}&crarr;</dt>
-              <dd>submit</dd>
-              <dt className="text-right text-text">
-                {alt}[ {alt}]
-              </dt>
-              <dd>walk trace</dd>
-              <dt className="text-right text-text">{alt}w</dt>
-              <dd>close tab</dd>
-              <dt className="text-right text-text">{mod}f</dt>
-              <dd>find</dd>
-            </dl>
-          </div>
-
-          {!user && !solvedAt && (
-            <div className="shrink-0 border-b border-line px-4 py-3">
-              <h2 className="label">{needsSignIn ? "submit blocked" : "signed out"}</h2>
-              <SignInToSubmit className="mt-2 border-0 bg-transparent p-0" />
-            </div>
-          )}
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-            <h2 className="label">where you are</h2>
-            <p className="mt-2 text-[11.5px] leading-[1.6] text-muted">
+            <p className="mt-2 t-small text-muted">
               {visited.size} of {resolved.filter(Boolean).length} frames visited &middot; {plural(tabs.length, "file")} open
               {modified.size > 0 && <> &middot; {modified.size} modified</>}
             </p>
-            <p className="mt-3 text-[11px] leading-[1.6] text-muted">
-              the trace shows where it failed, not where it broke. the amber row is where it raised; the violet gutter
-              marks are the frames above it.
-            </p>
           </div>
+
+          {!user && !solvedAt && (
+            <div className="shrink-0 px-4 py-3">
+              <SignInToSubmit className="border-0 bg-transparent p-0" />
+            </div>
+          )}
         </aside>
       </div>
 

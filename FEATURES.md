@@ -626,6 +626,20 @@ gate, and the one-solve award. Treat the browser half (the header control, the
 redirect round trip, the cookie actually surviving the cross-site hop) as
 unverified until it is deployed.
 
+## Running it with no AWS account
+
+The whole backend runs on this machine, open source and unbillable, from the
+**same `infra/template.yaml`** the cloud path uses: **Finch** (or Docker)
+builds the per-repo image, **LocalStack** serves S3, DynamoDB, Lambda, Step
+Functions, Secrets Manager and API Gateway on `:4566`, and the **SAM CLI**
+(`samlocal`) deploys the template into it. The web app's dev server proxies
+`/api/*` to LocalStack, which is what makes the session cookie first-party and
+the OAuth callback a stable `http://localhost:3100/...` URL.
+
+The runbook is `infra/local/README.md`. Nothing in the application code is
+aware of any of this: boto3 reads `AWS_ENDPOINT_URL` itself, and every ARN the
+handlers use already comes from the environment.
+
 ## Deploying
 
 1. Build and push the image for a vetted repo:
@@ -652,11 +666,19 @@ unverified until it is deployed.
 
 ## Known issues
 
-- **Not deployed.** No AWS credentials on the build machine.
+- **Not deployed to AWS.** No AWS credentials on the build machine. The
+  LocalStack path above has not been executed either: Docker Desktop's daemon
+  was not running and Finch is not installed, so `docker-compose.yml`,
+  `build_local.sh` and `deploy.sh` are unrun. The template they deploy does
+  now pass `sam validate --lint`, which it did not before: `WebOrigin="*"`
+  made the transform fail outright, and an empty `GitHubClientId` would have
+  been rejected by Secrets Manager on a sign-in-disabled deploy.
 - **No GitHub round trip has ever happened.** There is no OAuth app, so
   `exchange_code` and `fetch_user` — the only two functions in `cloud/auth.py`
   that touch the network — have only ever run against stubs. Everything around
-  them is tested.
+  them is tested, and the full click-through (sign in → consent → back signed
+  in → sign out) has been driven in Chrome against a local stand-in for
+  github.com.
 - **The Go image has never been built.** `infra/docker/Dockerfile.go` is
   unverified: Docker Desktop's daemon was not running on the build machine, so
   nothing in it — the pinned Go toolchain download, the `go list -m` check
