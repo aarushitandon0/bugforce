@@ -114,7 +114,11 @@ export function Profile() {
   const solvedCount = solves.length;
   const totalCount = catalogue?.length ?? 0;
 
-  if (loading && sessionLoading) return <Loading text="loading your profile" />;
+  // Both, not either. The session answer is cached and lands almost at once,
+  // while the four API calls behind these numbers serialize through the local
+  // API and take a few seconds; gating on the session alone rendered a profile
+  // full of zeroes ("1 of 0") until they arrived.
+  if (loading || sessionLoading) return <Loading text="loading your profile" />;
   if (error && !catalogue) return <ErrorLine message={error} onRetry={() => window.location.reload()} />;
 
   return (
@@ -315,7 +319,8 @@ function Dial({ solved, total, pct }: { solved: number; total: number; pct: numb
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl tabular-nums text-text">{thousands(solved)}</span>
-        <span className="t-small text-muted">of {thousands(total)}</span>
+        {/* "1 of 0" is not a fact about anything; with no catalogue, say the count alone. */}
+        <span className="t-small text-muted">{total > 0 ? `of ${thousands(total)}` : "solved"}</span>
       </div>
     </div>
   );
@@ -328,57 +333,108 @@ function Dial({ solved, total, pct }: { solved: number; total: number; pct: numb
  * keyed by id, not by day -- so this is "days you fixed something", which is
  * what the streak counts too. Calling it submissions would overstate it.
  */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** The five shades, lightest to darkest, matching the legend below the grid. */
+function cellClass(n: number): string {
+  if (n === 0) return "bg-surface-3";
+  if (n === 1) return "bg-keep/30";
+  if (n === 2) return "bg-keep/55";
+  if (n < 5) return "bg-keep/80";
+  return "bg-keep";
+}
+
+/**
+ * A year of activity, one column per week, the way GitHub and LeetCode draw it.
+ *
+ * Solves only. There is no per-attempt log to draw from: a submission row is
+ * keyed by id, not by day, so "submissions" would overstate what this shows.
+ * It is the same quantity the streak counts, which keeps the two honest with
+ * each other.
+ */
 function ActivityCard({ days }: { days: number[] }) {
   const counts = new Map<number, number>();
   for (const d of days) counts.set(d, (counts.get(d) ?? 0) + 1);
 
   const today = dayKey(Date.now());
   const weeks = calendarWeeks();
-
   const active = new Set(days).size;
+
+  // A month label sits above the first column whose month differs from the
+  // column before it, so labels land where the month actually starts.
+  const monthLabel = weeks.map((column, i) => {
+    const month = new Date(column[0]).getMonth();
+    if (i === 0) return null; // the first column is usually a partial week
+    return month !== new Date(weeks[i - 1][0]).getMonth() ? MONTHS[month] : null;
+  });
+
   return (
     <Panel
       header={
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <h2 className="label">activity</h2>
           <p className="t-small text-muted tabular-nums">
-            {plural(days.length, "solve")} · {plural(active, "active day")}
+            {plural(days.length, "solve")} in the last year &middot; {plural(active, "active day")}
           </p>
         </div>
       }
     >
-      <div className="overflow-x-auto">
-        <div className="flex gap-[3px]">
-          {weeks.map((column, i) => (
-            <div key={i} className="flex flex-col gap-[3px]">
-              {column.map((day) => {
-                const n = counts.get(day) ?? 0;
-                const future = day > today;
-                return (
-                  <div
-                    key={day}
-                    title={future ? "" : `${new Date(day).toDateString()}: ${plural(n, "solve")}`}
-                    className={`h-[10px] w-[10px] rounded-[2px] ${
-                      future
-                        ? "bg-transparent"
-                        : n === 0
-                          ? "bg-surface-3"
-                          : n === 1
-                            ? "bg-keep/40"
-                            : n < 4
-                              ? "bg-keep/70"
-                              : "bg-keep"
-                    }`}
-                  />
-                );
-              })}
+      <div className="overflow-x-auto pb-1">
+        <div className="inline-flex flex-col gap-1">
+          {/* month row, aligned to the columns it labels */}
+          <div className="flex gap-[3px] pl-[28px]">
+            {weeks.map((_, i) => (
+              <div key={i} className="w-[11px] shrink-0 t-small text-faint">
+                {monthLabel[i] && <span className="relative -top-px block whitespace-nowrap">{monthLabel[i]}</span>}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-[3px]">
+            {/* weekday gutter: Mon, Wed, Fri, as both sites label it */}
+            <div className="flex w-[25px] shrink-0 flex-col gap-[3px] pr-1 text-right">
+              {["", "Mon", "", "Wed", "", "Fri", ""].map((label, i) => (
+                <div key={i} className="h-[11px] text-[9px] leading-[11px] text-faint">
+                  {label}
+                </div>
+              ))}
             </div>
-          ))}
+
+            {weeks.map((column, i) => (
+              <div key={i} className="flex flex-col gap-[3px]">
+                {column.map((day) => {
+                  const n = counts.get(day) ?? 0;
+                  if (day > today) {
+                    return <div key={day} className="h-[11px] w-[11px]" />;
+                  }
+                  return (
+                    <div
+                      key={day}
+                      title={`${new Date(day).toDateString()}: ${plural(n, "bug")} fixed`}
+                      className={`h-[11px] w-[11px] rounded-[2px] ${cellClass(n)}`}
+                    />
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <p className="mt-3 t-small text-faint">
-        One cell per day. Shade is how many bugs you fixed that day.
-      </p>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <p className="t-small text-faint">
+          {days.length === 0
+            ? "No solves yet. Each cell is a day; it fills in when you fix a bug."
+            : "One cell per day. Shade is how many bugs you fixed that day."}
+        </p>
+        <div className="flex items-center gap-1.5 t-small text-faint">
+          <span>less</span>
+          {[0, 1, 2, 4, 6].map((n) => (
+            <span key={n} className={`h-[11px] w-[11px] rounded-[2px] ${cellClass(n)}`} />
+          ))}
+          <span>more</span>
+        </div>
+      </div>
     </Panel>
   );
 }

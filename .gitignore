@@ -126,3 +126,10 @@ cache/**
 DEMO_SPEECH.md
 DEMO_FLOW.md
 demo/
+
+# ---------------------------------------------------------------
+# Working documents. Planning and running notes, superseded by
+# README.md as the thing a reader is meant to read.
+# ---------------------------------------------------------------
+FEATURES.md
+masterspec.md
