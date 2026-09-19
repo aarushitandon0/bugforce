@@ -1,5 +1,7 @@
 import { createTwoFilesPatch } from "diff";
 
+import { rulesFor } from "./lang";
+
 /**
  * Builds the unified diff the grader applies with `git apply -p1`, and mirrors
  * the path half of cloud/anti_cheat.py so an obviously doomed submission is
@@ -45,20 +47,20 @@ export function buildPatch(changes: FileChange[]): string {
     .join("");
 }
 
-/** cloud/anti_cheat.is_test_path */
-export function isTestPath(path: string): boolean {
-  const parts = path.replace(/\\/g, "/").split("/");
-  const name = parts[parts.length - 1];
-  if (parts.some((p) => p === "tests" || p === "test" || p === "testing")) return true;
-  return name.startsWith("test_") || name.endsWith("_test.py") || name === "conftest.py";
+/** cloud/anti_cheat.is_test_path, for the language the challenge is in. */
+export function isTestPath(path: string, language?: string | null): boolean {
+  return rulesFor(language).isTestPath(path);
 }
 
 /** cloud/anti_cheat.check_paths: the reason a patch touching these paths is rejected, or null. */
-export function pathProblem(paths: string[]): string | null {
+export function pathProblem(paths: string[], language?: string | null): string | null {
   if (paths.length === 0) return "no files changed";
+  const rules = rulesFor(language);
   for (const path of paths) {
-    if (isTestPath(path)) return `patch modifies a test file: ${path}`;
-    if (!path.endsWith(".py")) return `patch modifies a non-Python file: ${path}`;
+    if (rules.isTestPath(path)) return `patch modifies a test file: ${path}`;
+    if (!path.endsWith(rules.sourceSuffix)) {
+      return `patch modifies a file that is not ${rules.label} source: ${path}`;
+    }
   }
   return null;
 }

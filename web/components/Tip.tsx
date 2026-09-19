@@ -42,7 +42,7 @@ export function Tip({
         <span
           role="tooltip"
           id={id}
-          className={`pointer-events-none absolute bottom-full z-30 mb-2 w-[260px] border border-line bg-panel px-3 py-2.5 text-left text-[11px] leading-[1.55] text-text animate-fade ${position}`}
+          className={`pointer-events-none absolute bottom-full z-30 mb-2 w-[260px] border border-line bg-surface-2 px-3 py-2.5 text-left text-[11px] leading-[1.55] text-text animate-fade ${position}`}
         >
           {content}
         </span>

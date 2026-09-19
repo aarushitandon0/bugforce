@@ -14,7 +14,7 @@ from pathlib import Path
 from bugforge import baseline as _baseline
 from bugforge import mutate as _mutate
 from bugforge import runner as _runner
-from bugforge.models import LineToTests, MutationSite, RunnerConfig
+from bugforge.models import Baseline, LineToTests, MutationSite, RunnerConfig
 
 SOURCE_SUFFIX = ".py"
 
@@ -41,6 +41,16 @@ class PythonAdapter:
 
     name = "python"
 
+    def source_root(self, tree: Path, package: str) -> Path:
+        # Root layout only, and deliberately so: pytest prepends the rootdir of
+        # the mutated copy to sys.path, which shadows the installed package
+        # only when the package lives at the root. The image build enforces the
+        # same rule, so reaching here with a src/ layout should be impossible.
+        candidate = Path(tree) / package
+        if not candidate.is_dir():
+            raise RuntimeError(f"package {package!r} not found at {candidate}")
+        return candidate
+
     def discover_sources(self, repo: Path) -> list[Path]:
         repo = Path(repo)
         found = []
@@ -59,15 +69,24 @@ class PythonAdapter:
     def apply(self, source: str, site: MutationSite) -> str:
         return _mutate.apply(source, site)
 
-    def coverage_map(self, repo: Path, runner: RunnerConfig) -> LineToTests:
+    def baseline(self, repo: Path, runner: RunnerConfig) -> Baseline:
         # compute_baseline does the green check, the empty-contexts check and
-        # the on-disk cache; the map is the part the protocol promises.
-        result = _baseline.compute_baseline(
+        # the on-disk cache.
+        return _baseline.compute_baseline(
             Path(repo), runner.package, runner.python, use_cache=runner.use_cache
         )
-        return result.line_to_tests
+
+    def coverage_map(self, repo: Path, runner: RunnerConfig) -> LineToTests:
+        return self.baseline(repo, runner).line_to_tests
 
     def run_tests(
         self, tree: Path, test_ids: list[str] | None, runner: RunnerConfig
     ) -> _runner.RunResult:
         return _runner.run_pytest(Path(tree), runner.python, test_ids, runner.timeout_s)
+
+    def extract_failure(self, output: str, test_id: str) -> tuple[list[tuple[str, int, str]], str]:
+        # Deferred import: select.py imports this module, so a module-level
+        # import would be circular.
+        from bugforge import select as _select
+
+        return _select.extract_pytest_failure(output, test_id)

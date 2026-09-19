@@ -20,8 +20,8 @@ import logging
 from dataclasses import asdict
 
 from bugforge.models import Baseline, MutationSite
-from bugforge.mutate import MutationError, apply
-from bugforge.runner import run_mutation
+from bugforge.mutate import MutationError
+from bugforge.runner import run_mutation_with
 from bugforge.select import TIMEOUT_S, Outcome
 
 from cloud import config, s3_io, workspace
@@ -36,7 +36,7 @@ class NoSurvivorsError(RuntimeError):
     """Every mutation in the batch was a gap or a drop. Expected; see the ASL."""
 
 
-def _classify_one(tree, python, baseline: Baseline, site: MutationSite) -> dict:
+def _classify_one(tree, adapter, runner, baseline: Baseline, site: MutationSite) -> dict:
     covering = baseline.tests_for_line(site.path, site.lineno)
     record = {"site": asdict(site), "covering_tests": covering}
 
@@ -45,11 +45,11 @@ def _classify_one(tree, python, baseline: Baseline, site: MutationSite) -> dict:
 
     source = (tree / site.path).read_text(encoding="utf-8")
     try:
-        mutated = apply(source, site)
+        mutated = adapter.apply(source, site)
     except MutationError as e:
         return {**record, "outcome": Outcome.DROP_CATASTROPHIC, "reason": f"apply failed: {e}"}
 
-    result = run_mutation(tree, python, site, mutated, covering, timeout=TIMEOUT_S)
+    result = run_mutation_with(adapter, tree, site, mutated, covering, runner)
 
     if result.timed_out:
         return {**record, "outcome": Outcome.DROP_TIMEOUT, "reason": "targeted run timed out"}
@@ -71,10 +71,12 @@ def handler(event: dict, context) -> dict:
     baseline = Baseline(**s3_io.get_json(config.bucket(), event["baseline_key"]))
 
     tree = workspace.repo_tree(config.repo_dir())
-    python = workspace.python_exe()
+    adapter = workspace.adapter()
+    runner = workspace.runner_config(TIMEOUT_S)
 
     results = [
-        _classify_one(tree, python, baseline, MutationSite(**site)) for site in batch["sites"]
+        _classify_one(tree, adapter, runner, baseline, MutationSite(**site))
+        for site in batch["sites"]
     ]
     survivors = [r for r in results if r["outcome"] == SURVIVOR]
 

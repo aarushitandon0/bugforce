@@ -14,7 +14,7 @@ export function ThemeToggle({ className = "" }: { className?: string }) {
       onClick={() => set(next)}
       title={`switch to ${next} theme`}
       aria-label={`switch to ${next} theme`}
-      className={`flex h-6 w-6 items-center justify-center text-dim outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text ${className}`}
+      className={`flex h-6 w-6 items-center justify-center text-muted outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text ${className}`}
     >
       {theme === "dark" ? <Sun size={16} strokeWidth={1.5} /> : <Moon size={16} strokeWidth={1.5} />}
     </button>

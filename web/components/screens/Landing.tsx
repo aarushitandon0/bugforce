@@ -5,13 +5,17 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, getRepos, startForge, type Forgeable } from "@/lib/api";
 import { HEADLINE, VETTED_REPOS } from "@/lib/forge-data";
 import { normalizeRepoUrl, parseRepoInput, repoDisplay } from "@/lib/format";
+import { rulesFor } from "@/lib/lang";
 import { Cursor } from "../Cursor";
 import { ForgeStream, type LocalLine } from "../ForgeStream";
+import { buttonClass } from "../ui/Button";
+import { StatLine } from "../ui/StatLine";
 
 /*
- * Repos worth showing that no image exists for yet. They render dim and
- * disabled: the chips used to offer these as if they were forgeable, and
- * clicking one gave an error.
+ * Repos worth showing that no image exists for yet. They used to render at
+ * 50% opacity, which made the whole row -- including the two that DO work --
+ * read as disabled and blocked the fastest path to first value. They now carry
+ * the same resting style as every other chip and say what is true instead.
  */
 const NOT_VETTED = ["psf/requests", "arrow-py/arrow"];
 
@@ -27,7 +31,7 @@ const STEPS = [
 function refusal(repo: string, forgeable: Forgeable[]): LocalLine[] {
   const available = forgeable.map((f) => repoDisplay(f.repo)).join(", ") || "none";
   return [
-    { tone: "error", text: `✗ ${repo} is not vetted yet` },
+    { tone: "error", text: `✗ ${repo} has not been forged yet` },
     { tone: "dim", text: "  repos are forged from images built ahead of time, with dependencies" },
     { tone: "dim", text: "  installed on a trusted machine. nothing is cloned or installed at runtime." },
     { tone: "dim", text: `  forgeable now: ${available}` },
@@ -94,35 +98,42 @@ export function Landing() {
 
   // The vetted list is baked in at build time from infra/docker/vetted_repos.json,
   // so a chip can never offer a repo that has no image.
-  const examples = VETTED_REPOS.map((r) => r.display);
+  const examples = VETTED_REPOS.map((r) => ({ display: r.display, language: r.language }));
+  const chip = buttonClass("secondary", "sm");
 
   return (
     /*
      * Two columns on a wide screen: the pitch and the input on the left, the
-     * stream on the right at full column height. It used to be one narrow
-     * column with the whole right half empty and the stream -- the only proof
-     * any of this is real -- pushed below the fold.
+     * stream on the right. The grid stretches both, so the stream's bottom
+     * edge and the stats line at the foot of the left column resolve to the
+     * same baseline instead of ending 80px apart.
      */
-    <div className="grid grid-cols-1 gap-8 pt-10 pb-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-12 lg:pt-14">
+    <div className="grid grid-cols-1 gap-8 pt-10 pb-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:gap-12 lg:pt-12">
       <section className="flex min-w-0 flex-col">
-        <h1 className="max-w-[18ch] text-[clamp(28px,3.4vw,40px)] font-bold leading-[1.14] tracking-[-0.02em] text-text">
+        <h1 className="t-display max-w-[18ch] text-text">
           Every repo is a debugging gym.
           <Cursor className="ml-3" />
         </h1>
-        <p className="mt-5 max-w-[58ch] text-[14.5px] leading-[1.65] text-dim">
+        <p className="t-body mt-5 max-w-[58ch] text-muted">
           Paste any public repo with a test suite. BugForge breaks it the way it would break in production, hands you
           the stack trace, and checks your fix. Nothing here was written by hand.
         </p>
 
+        {/*
+         * The input and the button are one 52px box with a shared border. The
+         * button is the only filled accent on the page -- the page previously
+         * had no filled control anywhere, which is what made it read as a demo
+         * rather than a product.
+         */}
         <form
-          className="mt-7 flex flex-col border border-line transition-colors duration-[120ms] focus-within:border-dim sm:flex-row"
+          className="mt-6 flex flex-col rounded border border-line transition-colors duration-[120ms] focus-within:border-line-strong sm:h-13 sm:flex-row"
           onSubmit={(e) => {
             e.preventDefault();
             forge(input);
           }}
         >
-          <label className="flex min-w-0 flex-1 cursor-text items-center pl-4" htmlFor="repo-input">
-            <span className="shrink-0 select-none text-[15px] text-dim">github.com/</span>
+          <label className="flex min-w-0 flex-1 cursor-text items-center pl-5" htmlFor="repo-input">
+            <span className="shrink-0 select-none text-[15px] text-muted">github.com/</span>
             <input
               id="repo-input"
               ref={inputRef}
@@ -133,79 +144,84 @@ export function Landing() {
               autoCapitalize="off"
               spellCheck={false}
               aria-label="GitHub repository, as owner/repo"
-              className="min-w-0 flex-1 bg-transparent py-3.5 pr-4 text-[15px] text-text caret-text outline-none placeholder:text-dim/60 [caret-shape:block]"
+              className="min-w-0 flex-1 bg-transparent py-4 pr-5 text-[15px] text-text caret-text outline-none placeholder:text-faint [caret-shape:block]"
             />
           </label>
           <button
             type="submit"
             disabled={starting}
-            className="border-t border-line px-6 py-3.5 text-[13.5px] font-bold text-text transition-colors duration-[120ms] hover:bg-text hover:text-base disabled:cursor-wait disabled:text-dim disabled:hover:bg-transparent sm:border-t-0 sm:border-l"
+            className={buttonClass(
+              "primary",
+              "lg",
+              "shrink-0 rounded-none border-t border-line disabled:cursor-wait sm:h-auto sm:self-stretch sm:border-t-0 sm:border-l",
+            )}
           >
             {starting ? "forging…" : "forge bugs"}
           </button>
         </form>
 
-        <div className="mt-3 flex min-h-7 flex-wrap items-center gap-2 text-[12px]">
-          {examples.length > 0 && <span className="text-dim">try</span>}
-          {examples.map((repo) => (
+        {/*
+         * Every chip rests identically. What differs is hover, and the one
+         * whose name is currently in the box -- which is the only distinction
+         * that tells the reader anything.
+         */}
+        <div className="mt-3 flex min-h-8 flex-wrap items-center gap-2">
+          {examples.length > 0 && <span className="t-small text-muted">try</span>}
+          {examples.map(({ display, language }) => (
             <button
-              key={repo}
+              key={display}
               type="button"
+              aria-pressed={input.trim().toLowerCase() === display.toLowerCase()}
               onClick={() => {
-                setInput(repo);
-                forge(repo);
+                setInput(display);
+                forge(display);
               }}
-              className="border border-line px-2 py-0.5 text-text transition-colors duration-[120ms] hover:border-dim"
+              className={buttonClass(
+                "secondary",
+                "sm",
+                input.trim().toLowerCase() === display.toLowerCase() ? "border-line-strong bg-surface-2" : "",
+              )}
             >
-              {repo}
+              {display}
+              {/* The language, not decoration: picking an example is really
+                  picking a language, and the two on offer behave differently
+                  enough that a learner should know which one they clicked. */}
+              <span className="text-muted">{rulesFor(language).label}</span>
             </button>
           ))}
           {NOT_VETTED.map((repo) => (
-            <span
-              key={repo}
-              title="not vetted yet &mdash; images are built ahead of time, on a trusted machine"
-              className="cursor-not-allowed border border-line px-2 py-0.5 text-dim opacity-50"
-              aria-disabled="true"
-            >
+            <span key={repo} className={`${chip} text-muted`}>
               {repo}
+              <span className="text-faint">&middot; not forged yet</span>
             </span>
           ))}
         </div>
 
-        <ol className="mt-10 space-y-2.5 border-t border-line pt-6 text-[12.5px] leading-[1.55]">
+        <ol className="mt-10 space-y-3 border-t border-line pt-10">
           {STEPS.map(([name, what], i) => (
-            <li key={name} className="flex gap-3">
-              <span className="w-[2ch] shrink-0 tabular-nums text-dim">{String(i + 1).padStart(2, "0")}</span>
+            <li key={name} className="t-small flex gap-3">
+              <span className="w-[2ch] shrink-0 tabular-nums text-faint">{String(i + 1).padStart(2, "0")}</span>
               <span className="w-[9ch] shrink-0 text-text">{name}</span>
-              <span className="min-w-0 text-dim">{what}</span>
+              {/* fixed column, so the three descriptions wrap the same way at
+                  every width instead of each finding its own break */}
+              <span className="min-w-0 max-w-[52ch] text-muted">{what}</span>
             </li>
           ))}
         </ol>
 
         {/* the proof that there is a filter, and not just a model making bugs up */}
-        <dl className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-1 pt-10 text-[12px] text-dim tabular-nums">
-          {[
-            { n: HEADLINE.candidates, label: "candidates" },
-            { n: HEADLINE.covered, label: "on covered lines" },
-            { n: HEADLINE.admitted, label: "admitted" },
-            { n: HEADLINE.gaps, label: "test gaps" },
-          ].map((stat, i) => (
-            <span key={stat.label} className="flex items-baseline gap-2">
-              {i > 0 && <span aria-hidden className="text-dim opacity-40">&middot;</span>}
-              <dt className="sr-only">{stat.label}</dt>
-              <dd className="flex items-baseline gap-1.5">
-                <span className="text-text">{stat.n}</span>
-                <span>{stat.label}</span>
-              </dd>
-            </span>
-          ))}
-        </dl>
+        <StatLine
+          className="mt-auto pt-10"
+          stats={[
+            { value: HEADLINE.candidates, label: "candidates" },
+            { value: HEADLINE.covered, label: "on covered lines" },
+            { value: HEADLINE.admitted, label: "bugs" },
+            { value: HEADLINE.gaps, label: "test gaps", tone: "text-gap" },
+          ]}
+        />
       </section>
 
-      <section
-        aria-label="generation stream"
-        className="h-[420px] min-h-0 min-w-0 lg:h-[calc(100dvh-8.5rem)] lg:max-h-[720px] lg:min-h-[440px]"
-      >
+      <section aria-label="generation stream" className="min-h-[420px] min-w-0 lg:min-h-[560px]">
         <ForgeStream executionId={executionId} repoLabel={repoLabel} localLines={lines} legend />
       </section>
     </div>

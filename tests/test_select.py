@@ -9,12 +9,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import bugforge.select as select_module
-from bugforge.models import Baseline, MutationSite
+from bugforge.languages import get_adapter
+from bugforge.models import Baseline, MutationSite, RunnerConfig
 from bugforge.runner import RunResult
 from bugforge.select import (
     Outcome,
     _displacement,
-    _extract_traceback_frames,
+    extract_pytest_failure,
     _name_leak,
     classify_candidate,
     score_candidate,
@@ -51,8 +52,8 @@ def _site(operator_id="ARITHMETIC", fn="add"):
     )
 
 
-def test_extract_traceback_frames_order_and_scoping():
-    frames, block = _extract_traceback_frames(SAMPLE_OUTPUT, "tests/test_ops.py::test_add_things")
+def test_extract_pytest_failure_order_and_scoping():
+    frames, block = extract_pytest_failure(SAMPLE_OUTPUT, "tests/test_ops.py::test_add_things")
     assert frames == [
         ("tests/test_ops.py", 5, "test_add_things"),
         ("mathy/ops.py", 2, "add"),
@@ -60,7 +61,7 @@ def test_extract_traceback_frames_order_and_scoping():
     assert "assert 4 == 5" in block
 
 
-def test_extract_traceback_frames_picks_the_right_test_block():
+def test_extract_pytest_failure_picks_the_right_test_block():
     two_test_output = SAMPLE_OUTPUT.replace(
         "=========================== short test summary info ============================",
         (
@@ -73,7 +74,7 @@ def test_extract_traceback_frames_picks_the_right_test_block():
             "=========================== short test summary info ============================"
         ),
     )
-    frames, _ = _extract_traceback_frames(two_test_output, "tests/test_ops.py::test_sub_things")
+    frames, _ = extract_pytest_failure(two_test_output, "tests/test_ops.py::test_sub_things")
     assert frames == [("tests/test_ops.py", 9, "test_sub_things"), ("mathy/ops.py", 5, "sub")]
 
 
@@ -102,12 +103,12 @@ tests\\test_asyncio.py:436: CustomException
 """
 
 
-def test_extract_traceback_frames_real_pytest_long_format():
+def test_extract_pytest_failure_real_pytest_long_format():
     # pytest --tb=long prints "path:line: " (or "path:line: ExcName" for the
     # deepest frame) with no "in func", and backslashes on Windows. Phase 3's
     # original regex required "in func" and matched none of these, which made
     # every challenge's displacement 4.
-    frames, _ = _extract_traceback_frames(
+    frames, _ = extract_pytest_failure(
         REAL_LONG_OUTPUT, "tests/test_asyncio.py::TestContextManager::test_retry_with_async_exc"
     )
     assert frames == [
@@ -161,6 +162,7 @@ def test_score_rewards_high_displacement_and_search_space():
     test_to_files = {"tests/test_ops.py::test_add_things": {"mathy/ops.py", "mathy/util.py", "mathy/other.py"}}
     far_output = SAMPLE_OUTPUT.replace("mathy/ops.py:2: in add", "mathy/far_away.py:99: in far_away")
     breakdown = score_candidate(
+        get_adapter(),
         "mathy/ops.py",
         site,
         "tests/test_ops.py::test_add_things",
@@ -178,6 +180,7 @@ def test_score_penalizes_name_leak():
     site = _site(fn="add_things")  # shares "add" + "things" token with the test name
     test_to_files = {"tests/test_ops.py::test_add_things": {"mathy/ops.py"}}
     with_leak = score_candidate(
+        get_adapter(),
         "mathy/ops.py",
         site,
         "tests/test_ops.py::test_add_things",
@@ -188,6 +191,7 @@ def test_score_penalizes_name_leak():
     )
     no_leak_site = _site(fn="compute")
     without_leak = score_candidate(
+        get_adapter(),
         "mathy/ops.py",
         no_leak_site,
         "tests/test_ops.py::test_add_things",
@@ -207,6 +211,7 @@ def test_score_is_clamped_to_1_and_10():
     # worst case: displacement 0, search_space 0, noise saturates n to 0, plus a leak
     worst_site = _site(fn="add_things")
     worst = score_candidate(
+        get_adapter(),
         "mathy/ops.py",
         worst_site,
         "tests/test_ops.py::test_add_things",
@@ -250,10 +255,10 @@ def test_classify_candidate_falls_back_when_full_run_ids_dont_match_covering_tes
         failing_tests=["tests/test_ops.py::test_add_things"],
     )
     calls = iter([targeted_result, full_result])
-    monkeypatch.setattr(select_module, "run_mutation", lambda *a, **k: next(calls))
+    monkeypatch.setattr(select_module, "run_mutation_with", lambda *a, **k: next(calls))
 
     result = classify_candidate(
-        Path("."), "python", baseline, site, "mutated source", test_to_files={}
+        Path("."), get_adapter(), RunnerConfig(), baseline, site, "mutated source", test_to_files={}
     )
 
     assert result.outcome in (Outcome.ADMITTED, Outcome.DROP_LOW_SCORE)
@@ -278,10 +283,10 @@ def test_classify_candidate_treats_unreproduced_failure_as_test_gap(monkeypatch)
         timed_out=False, collection_error=False, failing_tests=[],
     )
     calls = iter([targeted_result, full_result])
-    monkeypatch.setattr(select_module, "run_mutation", lambda *a, **k: next(calls))
+    monkeypatch.setattr(select_module, "run_mutation_with", lambda *a, **k: next(calls))
 
     result = classify_candidate(
-        Path("."), "python", baseline, site, "mutated source", test_to_files={}
+        Path("."), get_adapter(), RunnerConfig(), baseline, site, "mutated source", test_to_files={}
     )
 
     assert result.outcome == Outcome.TEST_GAP

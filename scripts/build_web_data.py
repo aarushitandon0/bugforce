@@ -31,7 +31,9 @@ OUTPUT = ROOT / "web" / "lib" / "forge-data.ts"
 
 # Must match cloud/handlers/fn_api.py. A learner who can read the location off
 # the stream has already solved the challenge.
-MASKED_LOCATION = "░░░░░░.py:░░░"
+def masked_location(path: str) -> str:
+    suffix = path.rpartition(".")[2]
+    return f"░░░░░░.{suffix}:░░░" if suffix and suffix != path else "░░░░░░:░░░"
 
 DROP_DETAIL = {
     "DROP_too_loud": "too loud",
@@ -54,7 +56,7 @@ def stream_row(record: dict, index: int) -> dict:
         return {
             **row,
             "verdict": "keep",
-            "location": MASKED_LOCATION,
+            "location": masked_location(site["path"]),
             "tests_red": failing,
             "detail": f"displacement {record['score_breakdown']['displacement']}",
         }
@@ -87,6 +89,10 @@ def main() -> None:
             "display": entry["url"].removeprefix("https://github.com/"),
             "url": entry["url"],
             "sha": entry["sha"][:10],
+            # The landing page labels each example, because "we support this
+            # repo" and "we support this language" are different promises and
+            # a learner picking an example is really picking a language.
+            "language": entry.get("language", "python"),
         }
         for entry in vetted
     ]
@@ -136,6 +142,7 @@ def main() -> None:
         "  display: string;",
         "  url: string;",
         "  sha: string;",
+        "  language: string;",
         "}",
         "",
         "export interface ForgeData {",

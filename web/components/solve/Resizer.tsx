@@ -72,7 +72,7 @@ export function Resizer({
       }}
       className="group relative z-10 -mx-[2px] hidden w-[5px] shrink-0 cursor-col-resize touch-none outline-none lg:block"
     >
-      <span className="absolute inset-y-0 left-[2px] w-px bg-line transition-colors duration-[120ms] group-hover:bg-causal group-focus-visible:bg-causal" />
+      <span className="absolute inset-y-0 left-[2px] w-px bg-line-strong transition-colors duration-[120ms] group-hover:bg-frame group-focus-visible:bg-frame" />
     </div>
   );
 }

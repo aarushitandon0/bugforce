@@ -91,9 +91,9 @@ def test_stream_masks_kept_and_scoring_rows_but_shows_rejects():
     assert [(r["verdict"], r["location"], r["tests_red"], r["detail"]) for r in rows] == [
         ("gap", "tenacity/wait.py:88", 0, "test gap → report"),
         ("drop", "tenacity/stop.py:10", None, "timeout"),
-        ("keep", fn_api.MASKED_LOCATION, 1, "displacement 3"),
+        ("keep", "░░░░░░.py:░░░", 1, "displacement 3"),
         ("drop", "tenacity/__init__.py:412", 41, "too loud"),
-        ("scoring", fn_api.MASKED_LOCATION, 2, "full suite…"),
+        ("scoring", "░░░░░░.py:░░░", 2, "full suite…"),
     ]
     serialized = json.dumps(rows)
     assert "retry.py" not in serialized and ":45" not in serialized
@@ -449,3 +449,19 @@ def test_post_submission_without_a_log_stores_no_field(env, signed_in, monkeypat
         {"body": json.dumps({"challenge_id": ROW["challenge_id"], "patch": "--- a/x\n+++ b/x\n"})}
     )
     assert "investigation" not in stored
+
+
+def test_the_location_mask_keeps_the_extension_of_whatever_language_it_masks():
+    """The mask must not read as a lie on a non-Python repo.
+
+    A fixed ".py" on a Go repo's stream would make every masked row visibly
+    different from the unmasked ones around it -- which tells a learner
+    exactly which rows are the challenges, the one thing masking exists to
+    prevent. The extension itself gives nothing away: every file in a repo
+    shares it.
+    """
+    assert fn_api.masked_location("tenacity/stop.py") == "░░░░░░.py:░░░"
+    assert fn_api.masked_location("parser.go") == "░░░░░░.go:░░░"
+    assert fn_api.masked_location("request/oauth2.go") == "░░░░░░.go:░░░"
+    # A path with no extension at all still masks to something shaped right.
+    assert fn_api.masked_location("Makefile") == "░░░░░░:░░░"

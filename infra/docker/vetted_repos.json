@@ -1,12 +1,24 @@
 {
-  "_comment": "The only repos an image may be built for. Dependencies from anything not listed here are never installed. Each entry pins a commit: a moving branch would silently change every challenge's line numbers. Root-layout packages only -- see the src/ check in the Dockerfile.",
+  "_comment": "The only repos an image may be built for. Dependencies from anything not listed here are never installed. Each entry pins a commit: a moving branch would silently change every challenge's line numbers. `language` selects both the LanguageAdapter (bugforge/languages/) and the Dockerfile; `package` is the import package coverage measures for Python and the module root for Go. Root-layout packages only -- see the layout check in each Dockerfile.",
   "repos": [
     {
       "name": "jd__tenacity",
+      "language": "python",
       "url": "https://github.com/jd/tenacity",
       "sha": "3e58094d3bc414975aad9eadf343a32bdb3b89b3",
       "package": "tenacity",
-      "extras": "test"
+      "extras": "test",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "golang-jwt__jwt",
+      "language": "go",
+      "url": "https://github.com/golang-jwt/jwt",
+      "sha": "e9547a11aa603c52a31e315cdcaa71d0f25b921a",
+      "package": "github.com/golang-jwt/jwt/v5",
+      "extras": "",
+      "license": "MIT",
+      "_why": "v5.3.0. Zero external module dependencies, no cgo, no network in any test, 53 tests green in ~4s, MIT licensed. Parsing and validation give the call depth a debugging challenge needs, which a flat conversion library would not."
     }
   ]
 }

@@ -45,7 +45,16 @@ TREE_URL_TTL_S = 600
 
 # fn_run_batch.SURVIVOR; not imported so the API does not load the runner.
 SURVIVOR = "SURVIVOR"
-MASKED_LOCATION = "░░░░░░.py:░░░"
+def masked_location(path: str) -> str:
+    """The stream's stand-in for a location it must not reveal.
+
+    The extension is kept because it gives nothing away -- every file in a
+    given repo shares it -- while a fixed ".py" would be a visible lie on a Go
+    repo's stream and would make the masked rows stand out from the unmasked
+    ones, which is the opposite of what masking is for.
+    """
+    suffix = path.rpartition(".")[2]
+    return f"░░░░░░.{suffix}:░░░" if suffix and suffix != path else "░░░░░░:░░░"
 # Admission starts at 3.0 and the score is clamped to 10: seven one-point bins.
 HISTOGRAM_EDGES = [3, 4, 5, 6, 7, 8, 9, 10]
 
@@ -171,7 +180,7 @@ def _stream_row(record: dict, scored: dict | None) -> dict:
             return {
                 **row,
                 "verdict": "scoring",
-                "location": MASKED_LOCATION,
+                "location": masked_location(site["path"]),
                 "tests_red": len(record.get("targeted_failures") or []),
                 "detail": "full suite…",
             }
@@ -184,7 +193,7 @@ def _stream_row(record: dict, scored: dict | None) -> dict:
 
     failing = len(record.get("failing_tests") or [])
     if outcome == Outcome.ADMITTED:
-        return {**row, "verdict": "keep", "location": MASKED_LOCATION, "tests_red": failing,
+        return {**row, "verdict": "keep", "location": masked_location(site["path"]), "tests_red": failing,
                 "detail": f"displacement {record['score_breakdown']['displacement']}"}
     if outcome == Outcome.TEST_GAP:
         return {**row, "verdict": "gap", "location": location, "tests_red": 0,

@@ -17,6 +17,8 @@ from pathlib import Path
 
 import bugforge.baseline as baseline_module
 from bugforge.baseline import compute_baseline
+from bugforge.languages import get_adapter
+from bugforge.models import RunnerConfig
 from bugforge.mutate import MutationError, apply, find_candidates
 from bugforge.package import package_challenge
 from bugforge.select import Outcome, run_selection
@@ -114,7 +116,9 @@ def test_full_pipeline_runs_clean_with_bedrock_disabled(tmp_path, monkeypatch):
                     pass
     assert pairs
 
-    results, _ = run_selection(repo, sys.executable, baseline, pairs)
+    results, _ = run_selection(
+        repo, get_adapter(), RunnerConfig(python=sys.executable), baseline, pairs
+    )
     admitted = [r for r in results if r.outcome == Outcome.ADMITTED]
     assert admitted, f"expected at least one admitted challenge, got {[r.outcome for r in results]}"
 

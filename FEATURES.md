@@ -1,14 +1,17 @@
 # BugForge — what is built, phase by phase
 
-BugForge turns any vetted open-source Python repo into debugging practice. It
-mutates one token of real source, keeps the mutation only if the repo's **own**
-test suite catches it, and hands you the broken tree plus the stack trace. Every
+BugForge turns a vetted open-source repo into debugging practice. It mutates
+one token of real source, keeps the mutation only if the repo's **own** test
+suite catches it, and hands you the broken tree plus the stack trace. Every
 mutation the suite *misses* becomes a test-gap report for the maintainers.
+
+**Python and Go**, via the adapter seam in `bugforge/languages/`. Everything
+outside that package names a language exactly nowhere.
 
 No model picks, scores, or grades anything. There is exactly one model call in
 the whole system, and it only writes a title and two sentences of prose.
 
-**Status:** Phases 1–8 are code-complete and tested locally. **Nothing is
+**Status:** Phases 1–9 are code-complete and tested locally. **Nothing is
 deployed.** There are no AWS credentials on the build machine, so the stack has
 never been created and the live URL does not exist yet. See
 [Deploying](#deploying).
@@ -27,8 +30,9 @@ never been created and the live URL does not exist yet. See
 | 6 | Web app: landing, repos, course, cards, solve, result, gaps | done, verified in a real browser |
 | 7 | Investigation replay on the result screen | done, verified in a real browser |
 | 8 | GitHub sign-in: identity, server-side progress, gated submissions | code done, **never deployed**; needs a real OAuth app |
+| 9 | Go: second language adapter, second vetted repo, per-language grading | pipeline verified locally; **image never built** |
 
-Tests: **301 Python tests**, **88 web tests**, all passing.
+Tests: **363 Python tests**, **109 web tests**, all passing.
 
 ---
 
@@ -121,7 +125,9 @@ preserved in the tree.
 - **Vetted repos only.** `infra/docker/vetted_repos.json` is the allowlist; one
   pre-built image per repo with dependencies installed at build time on a
   trusted machine, pinned to a commit SHA. Nothing is ever cloned or
-  `pip install`ed at runtime. Currently vetted: `jd/tenacity` @ `3e58094d`.
+  `pip install`ed at runtime. Each entry names its `language`, which picks
+  both the adapter and the Dockerfile. Currently vetted:
+  `jd/tenacity` @ `3e58094d` (Python) and `golang-jwt/jwt` @ `e9547a11` (Go).
 - **Anti-cheat** (`cloud/anti_cheat.py`): rejects patches touching test files or
   non-Python files, and fingerprints the patched tree against the original to
   catch a patch that edits something it didn't declare. On top of the path
@@ -375,79 +381,221 @@ look exactly like losing your work.
 
 `bugforge/languages/`
 
-Python is not hardcoded into the pipeline; it is the first **adapter**.
-Everything BugForge does to a repo is one of five operations, and all five are
+No language is hardcoded into the pipeline; each is an **adapter**. Everything
+BugForge does to a repo is one of seven operations, and all seven are
 language-specific, so they are named in one protocol
 (`bugforge/languages/base.py`):
 
 ```python
 class LanguageAdapter(Protocol):
     name: str
+    def source_root(self, tree: Path, package: str) -> Path: ...
     def discover_sources(self, repo: Path) -> list[Path]: ...
     def find_candidates(self, source: str, path: str) -> list[MutationSite]: ...
     def apply(self, source: str, site: MutationSite) -> str: ...
+    def baseline(self, repo: Path, runner: RunnerConfig) -> Baseline: ...
     def coverage_map(self, repo: Path, runner: RunnerConfig) -> LineToTests: ...
     def run_tests(self, tree: Path, test_ids: list[str] | None, runner: RunnerConfig) -> RunResult: ...
 ```
 
-`PythonAdapter` (`bugforge/languages/python.py`) is the sole implementation and
-owns **no logic** — every method forwards to the phase 1–3 code that already
-existed (`baseline.py`, `mutate.py`, `runner.py`), so calling through the
-adapter and calling the function directly do exactly the same thing. That is
-asserted, not assumed: `tests/test_languages.py` compares the two paths
-directly, so the wrapper cannot quietly drift from what it wraps. Callers ask
-`get_adapter()` for an adapter by name; an unknown name raises
-`UnsupportedLanguageError` naming what *is* available. The generate Lambda
-(`cloud/handlers/fn_generate.py`) and the demo CLIs go through it.
+`PythonAdapter` (`languages/python.py`) owns **no logic** — every method
+forwards to the phase 1–3 code that already existed (`baseline.py`,
+`mutate.py`, `runner.py`), so calling through the adapter and calling the
+function directly do exactly the same thing. That is asserted, not assumed:
+`tests/test_languages.py` compares the two paths directly, so the wrapper
+cannot quietly drift from what it wraps.
 
-### Adding a language
+Callers ask `get_adapter(name)`; an unknown name raises
+`UnsupportedLanguageError` naming what *is* available. Which adapter an image
+uses comes from `REPO_LANGUAGE`, baked in at build time from
+`vetted_repos.json` — the language and the image are the same choice, because
+a Go image carries a Go toolchain and a Python image does not.
 
-The seam is honest about which parts are easy and which are not. Locating and
-splicing tokens is a solved problem in every language; **`coverage_map` is the
-hard one.** Python hands us per-test coverage contexts for free
-(`--cov-context=test`), so the whole `line -> tests that cover it` map falls
-out of the single baseline run. No other toolchain below does that, and
-without it Phase 3 cannot run "only the tests that cover this line" — which is
-the optimisation the entire pipeline's runtime depends on.
+**What the seam was not.** Phase 4's handlers used to reach straight past it:
+`fn_generate` called `mutate.find_candidates`, `fn_run_batch` and `fn_score`
+called `runner.run_mutation`, `fn_grade` called `run_pytest`, `fn_baseline`
+called `compute_baseline`. Each now goes through the adapter, and
+`runner.run_mutation_with` is the language-neutral "materialize the mutation,
+run these tests" they share. The `apply` half of Phase 2 was split the same
+way: `mutate.splice` does the byte arithmetic for every language and takes the
+syntax check as an argument, so Go reuses the offset logic rather than owning
+a second copy of it — a second copy being exactly the silent corruption that
+discipline exists to prevent.
 
-| | Parse & locate | Coverage | Runner |
+## Phase 9 — Go
+
+`bugforge/languages/go.py`, `bugforge/languages/golocate/`,
+`infra/docker/Dockerfile.go`, `web/lib/lang.ts`, `web/lib/traceback-go.ts`
+
+Second vetted repo: **`golang-jwt/jwt` @ `e9547a11` (v5.3.0)** — zero external
+module dependencies, no cgo, no network in any test, 41 tests green in about
+four seconds, MIT. Parsing and validation give the call depth a debugging
+challenge needs; a flat conversion library would not.
+
+### Locating tokens
+
+Go's AST records the exact position of every operator (`BinaryExpr.OpPos`),
+which Python's does not — so `golocate`, a small Go program built on `go/ast`,
+is actually *more* precise than `mutate.py`, which has to search the gap
+between two operands for its token. It speaks JSON over stdin/stdout and does
+three things, all read-only: `locate` (emit positions), `check` (does this
+parse?), and `fingerprint` (count what the anti-cheat compares). Splicing
+stays in Python.
+
+`go/token` reports a 1-based **byte** column, so converting to `MutationSite`'s
+offsets is a subtraction and no rune decoding happens anywhere — the same
+discipline `mutate.py` keeps, and `tests/test_languages_go.py` checks every
+located span against the bytes it claims rather than one sample.
+
+Operators mirror Python's table with three deliberate differences:
+
+- **`!=` is mutable.** Python's table only flips `==`. `if err != nil` is the
+  defining control-flow decision in Go source, and flipping it produces a
+  defect that compiles, runs, and reads as a plausible human mistake.
+- **`*` becomes `/`**, not floor division — Go's `/` is already integer
+  division on integer operands.
+- **No `DEFAULT_ARG`**, because Go has no default arguments. `RETURN` is
+  restricted to flipping a bare `return true` / `return false`: Go's returns
+  are typed and often multi-valued, so that is the only rewrite guaranteed to
+  compile without consulting the type checker.
+
+`NEGATION` is simpler than Python's: deleting the one `!` byte turns
+`!(a || b)` into `(a || b)`, which is still valid Go, so the parenthesis
+special case `mutate.py` needs does not arise.
+
+A `+` with a string literal on either side is skipped — turning it into `-` is
+a compile error, not a defect, and only a full build would discover that.
+`String` / `Error` / `GoString` bodies are skipped, as `__repr__` / `__str__`
+are. So are `vendor/`, `testdata/`, `_test.go`, a package literally named
+`test` (Go's test convention is the filename suffix, so such a package is test
+*infrastructure* — `golang-jwt/jwt`'s `test/helpers.go` is exactly that), and
+anything carrying a `// Code generated … DO NOT EDIT.` line, because a learner
+sent to fix generated code would be fixing the wrong file.
+
+### The coverage map, which is the expensive part
+
+Python hands us per-test coverage contexts for free. Go's `-coverprofile` is a
+**whole-run** profile with no per-test attribution at all, so `GoAdapter` runs
+the suite **once per test**, each with its own profile, and unions them.
+
+On the vetted repo that is ~3s per test — about **two minutes** for the whole
+map, tolerable only because it is cached per `(repo, commit_sha)` in the same
+`.baseline_cache/` the Python baseline uses, so it happens once per commit and
+never again. `BaselineFunction` gets Lambda's maximum 900s timeout for this
+reason, and that ceiling is the real constraint on which Go repos can be
+vetted at all.
+
+Details that are load-bearing:
+
+- **`-coverpkg=./...`**, or the profile only covers the package under test and
+  a `request` test exercising root-package code leaves those lines looking
+  untested — every mutation there misfiled as a test gap.
+- Profiles name files by **import path**, not by a path relative to the repo,
+  so the module path is stripped off the front. The image build refuses to
+  build if `REPO_PACKAGE` disagrees with `go list -m`, because getting that
+  wrong reads downstream as "this repo has no covered lines at all".
+- The **green gate runs the whole suite first** rather than trusting the
+  per-test runs: a test that only passes in isolation is not a green suite.
+- A test that times out costs its own coverage rows, not the whole map. Lines
+  only it covered then look untested and are filed as gaps — wrong, but
+  conservative: a false gap is a report nobody acts on, where a false
+  challenge is a bug nobody can find.
+
+Test ids are `"<pkg dir>:<TestName>"` — `".:TestParser"`,
+`"request:TestParseFromRequest"` — so an id round-trips to a package and a
+`-run` anchor without a lookup table. Only `^Test` functions are collected:
+benchmarks, examples and fuzz targets have no fixed pass/fail verdict.
+
+### Running tests
+
+`go test -v`, grouped by package so a run spanning two packages costs two
+invocations rather than one per test, with an anchored `-run` alternation so
+`TestParse` never also matches `TestParseUnverified`.
+
+Results are counted from **top-level** `--- PASS/FAIL` lines only. `-v` indents
+subtest results under their parent, and counting those reported 70 results for
+8 requested tests — which would hand the scorer a "fraction of the suite that
+went red" computed against a different denominator than the baseline's test
+count. Failing subtests are reported under their parent, which is the id the
+baseline knows.
+
+A **build failure is not a test failure**: Go rejects at compile time what
+Python surfaces as a red test, and that lands in the same `collection_error`
+bucket Phase 3 already drops Python import errors into.
+
+The environment is inherited unchanged. The knobs this needs — `GOCACHE` and
+`GOPATH` somewhere writable, `CGO_ENABLED=0` for a pure-Go build — are
+properties of where it runs, not of what it does, so the image sets them and a
+developer's machine keeps its own. Forcing `CGO_ENABLED=0` in library code was
+the first version, and it broke every run on a Windows host whose Application
+Control policy refuses to execute the resulting binary.
+
+### Grading, and one hole it closed
+
+`cloud/anti_cheat.py` is per-language now. Go's rule list is shorter, and that
+is a property of Go rather than a gap — with test files off limits there is
+simply less to disable, and Go source has no `assert` statement. What it does
+check: no added `os.Exit` / `syscall.Exit` / `runtime.Goexit` / `log.Fatal*`,
+no added `t.Skip`, no added `//go:build` constraint. Still AST-based, via
+`golocate -mode=fingerprint`; still a before-vs-after comparison rather than an
+absolute count, because real Go code contains `log.Fatal` and build
+constraints already.
+
+The exit rule closed a real exploit: **`os.Exit(0)` added to code that runs
+during the suite ends the test binary with a success status before a single
+result prints, and `go test` reports `ok` over the top of it.** `fn_grade`
+carries a second lock on the same hole — a run that produced no results at all
+is never green, whatever its exit code.
+
+### The front end
+
+- `web/lib/lang.ts` is the single place the per-language rules live, mirroring
+  `anti_cheat.py`. The solve screen's editability rule was
+  `!path.endsWith(".py")`, which made **every file in a Go challenge read-only
+  and the challenge unsolvable**.
+- `web/lib/traceback-go.ts` parses `go test` output into the same `Frame[]` the
+  pytest parser produces, so the spine, the gutter markers and the replay chart
+  never learn which language they are showing. Go gives two shapes: a panic
+  with a real goroutine stack, and a bare `t.Errorf` report with no stack at
+  all. Both are handled, and the panic stack is **reversed**, because Go prints
+  innermost-first and everything here assumes Python's order. GOROOT frames
+  resolve to nothing and stay dimmed on the rail, exactly as site-packages
+  frames do. Its tests run against output captured verbatim from a real
+  mutated run, absolute temp paths and all.
+- CodeMirror gets `@codemirror/lang-go`; the file tree hides `vendor/` and
+  `*.test` / `*.exe` / `*.out`.
+- The generation stream's location mask follows the file's extension
+  (`░░░░░░.go:░░░`). A fixed `.py` on a Go repo would make every masked row
+  visibly different from the unmasked ones around it, telling a learner
+  exactly which rows are the challenges — the one thing masking exists to
+  prevent.
+
+### Adding a third language
+
+Locating and splicing tokens is solved in every language; **the coverage map is
+the hard one**, and Go is the evidence for how hard. Assume O(tests) suite runs
+and a cache unless proven otherwise.
+
+| | Parse & locate | Per-test coverage | Runner |
 |---|---|---|---|
-| **Go** | `go/ast` (stdlib, exact positions) or tree-sitter | `go test -coverprofile` | `go test ./...`, test ids as `-run` regexes |
-| **Java** | tree-sitter | JaCoCo (`jacoco.exec` → per-class/line) | Maven vs Gradle detection; Surefire XML for results |
-| **C++** | tree-sitter | gcov / lcov (`.gcda` → `.info`) | CMake + CTest |
+| **Go** — done | `go/ast` via `golocate` | one `-coverprofile` per test, unioned | `go test -run`, ids as `pkg:Name` |
+| **Java** | tree-sitter | JaCoCo, one dump per test (`sessionid`), or per-class | Maven vs Gradle detection; Surefire XML |
+| **C++** | tree-sitter | gcov/lcov with `__gcov_reset` between tests | CMake + CTest, `ctest -R` |
 
-Per language, concretely:
-
-- **Go** — `go/ast` gives byte-accurate positions via `token.FileSet`, so
-  `find_candidates`/`apply` port almost directly. The blocker is coverage:
-  `-coverprofile` is a **whole-run** profile with **no per-test contexts**, so
-  there is no line→tests map. The options are (a) run each test in isolation
-  with its own profile and union them — correct, but O(tests) suite runs, which
-  only works for small suites; (b) fall back to per-*package* granularity and
-  accept running a package's tests instead of a handful; or (c) build the map
-  once per commit offline and cache it, since the baseline is already cached
-  per `(repo, commit_sha)`. Also needs `_test.go` exclusion in
-  `discover_sources` and a `go build` gate before the run, because Go rejects
-  at compile time what Python would surface as a test failure.
-- **Java** — tree-sitter for positions (no stdlib parser worth shelling to).
-  JaCoCo produces per-line hit data but, like Go, **aggregates across the whole
-  run by default**; per-test attribution means one JaCoCo dump per test
-  (`@Rule`/agent `sessionid`) or accepting per-class granularity. The runner
-  has to detect Maven vs Gradle and parse Surefire/Failsafe XML rather than
-  scraping stdout. JVM startup makes the "run only covering tests" saving much
-  larger here than in Python — and the per-test coverage cost much higher.
-- **C++** — tree-sitter for positions; the preprocessor means a located token
-  may sit in a branch that never compiles for this build config, so
-  `find_candidates` needs a build-config-aware skip that Python has no
-  equivalent of. gcov/lcov emit `.gcda` per object file; per-test attribution
-  requires clearing counters between tests (`__gcov_reset`), so the same
-  per-test-run cost applies. CMake + CTest for discovery and running, with
-  `ctest -R` for test ids. Compile time, not test time, dominates — the 30s
-  per-mutation timeout would need to be per-language.
+- **Java** — JaCoCo aggregates across the whole run by default, so per-test
+  attribution means one dump per test. JVM startup makes the "run only covering
+  tests" saving much larger than in Python, and the per-test coverage cost much
+  higher.
+- **C++** — the preprocessor means a located token may sit in a branch that
+  never compiles for this build config, so `find_candidates` needs a
+  build-config-aware skip neither Python nor Go has an equivalent of. Compile
+  time, not test time, dominates: the 30s per-mutation timeout would have to
+  become per-language, and the 900s baseline ceiling is already the binding
+  constraint for Go.
 
 Everything downstream of the adapter — scoring, the rejection taxonomy, test
-gaps, packaging, the describer, the whole web app — is already
-language-agnostic and would not change.
+gaps, packaging, the describer, the replay chart — is genuinely
+language-agnostic and did not change for Go.
 
 ## How it was verified
 
@@ -509,6 +657,26 @@ unverified until it is deployed.
   `exchange_code` and `fetch_user` — the only two functions in `cloud/auth.py`
   that touch the network — have only ever run against stubs. Everything around
   them is tested.
+- **The Go image has never been built.** `infra/docker/Dockerfile.go` is
+  unverified: Docker Desktop's daemon was not running on the build machine, so
+  nothing in it — the pinned Go toolchain download, the `go list -m` check
+  against `REPO_PACKAGE`, the warm build cache, the `golocate` build — has
+  been executed. Everything it wraps was verified outside Docker, against a
+  real clone of the vetted repo, on Go 1.26.5.
+- **The Go build cache is a cold-start cost nobody has measured.** Lambda's
+  filesystem is read-only apart from `/tmp`, so Go's cache cannot live on the
+  image layer. `cloud/workspace.py` copies the image's warm cache from
+  `$SEED_GOCACHE` into `/tmp` once per container. Whether that copy fits the
+  2 GB ephemeral disk, and what it costs on a cold start, is unknown until the
+  image is built.
+- **Per-test coverage sets the ceiling on which Go repos can be vetted.**
+  `golang-jwt/jwt` takes ~2 minutes for 41 tests; `BaselineFunction` has
+  Lambda's maximum 900s. A Go repo whose suite is slow or large simply does
+  not fit, and there is no fallback to a coarser map.
+- **Go's `name_leak` penalty rarely fires.** The check splits a test id on
+  `_`, which suits `test_stop_after_attempt` and not `TestStopAfterAttempt` —
+  Go names are CamelCase. A Go challenge whose failing test names the mutated
+  function therefore keeps a higher score than it deserves.
 - **Bedrock output never seen.** Every challenge so far uses the deterministic
   template.
 - **Next.js 16.3.5 export bug.** Next writes per-segment prefetch payloads to

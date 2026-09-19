@@ -75,7 +75,7 @@ function Node({
           data-node={node.path}
           onClick={() => onToggle(node.path)}
           style={indent}
-          className="flex w-full items-center gap-1 pr-3 text-left text-dim outline-none transition-colors duration-[120ms] hover:bg-hover hover:text-text focus-visible:bg-hover focus-visible:text-text"
+          className="flex w-full items-center gap-1 pr-3 text-left text-muted outline-none transition-colors duration-[120ms] hover:bg-surface-3 hover:text-text focus-visible:bg-surface-3 focus-visible:text-text"
         >
           <span aria-hidden className="flex shrink-0 items-center opacity-70">
             {isOpen ? <ChevronDown size={12} strokeWidth={1.5} /> : <ChevronRight size={12} strokeWidth={1.5} />}
@@ -108,17 +108,17 @@ function Node({
         onClick={() => onOpen(node.path)}
         style={indent}
         title={binary ? "binary or too large to open" : node.path}
-        className={`flex w-full items-center gap-1 border-l pr-3 text-left outline-none transition-colors duration-[120ms] hover:bg-hover focus-visible:bg-hover disabled:cursor-default disabled:hover:bg-transparent ${
-          active ? "border-text bg-panel text-text" : `border-transparent ${marks.open.has(node.path) ? "text-text" : "text-dim"}`
+        className={`flex w-full items-center gap-1 border-l pr-3 text-left outline-none transition-colors duration-[120ms] hover:bg-surface-3 focus-visible:bg-surface-3 disabled:cursor-default disabled:hover:bg-transparent ${
+          active ? "border-text bg-surface-2 text-text" : `border-transparent ${marks.open.has(node.path) ? "text-text" : "text-muted"}`
         } ${binary ? "opacity-50" : ""}`}
       >
         <span aria-hidden className="flex w-[7px] shrink-0 justify-center">
-          {traced && <span className="block h-[5px] w-[5px] bg-causal" />}
+          {traced && <span className="block h-[5px] w-[5px] bg-frame" />}
         </span>
         <FileIcon name={node.name} />
         <span className="min-w-0 flex-1 truncate pl-0.5">{node.name}</span>
         {modified && (
-          <span className="shrink-0 text-[10px] text-error" aria-label="modified">
+          <span className="shrink-0 text-[10px] text-gap" aria-label="modified">
             M
           </span>
         )}

@@ -41,7 +41,7 @@ export function BottomPanel({
   ];
 
   return (
-    <div className="flex shrink-0 flex-col border-t border-line bg-panel">
+    <div className="flex shrink-0 flex-col border-t border-line bg-surface-2">
       <div className="flex h-7 shrink-0 items-stretch">
         {TABS.map(({ id, label, count }) => (
           <button
@@ -57,11 +57,11 @@ export function BottomPanel({
               }
             }}
             className={`label flex items-center gap-1.5 border-b-2 px-3 outline-none transition-colors duration-[120ms] hover:!text-text focus-visible:!text-text ${
-              open && tab === id ? "border-causal !text-text" : "border-transparent"
+              open && tab === id ? "border-frame !text-text" : "border-transparent"
             }`}
           >
             {label}
-            {count > 0 && <span className={`tabular-nums ${id === "problems" ? "text-error" : "text-dim"}`}>{count}</span>}
+            {count > 0 && <span className={`tabular-nums ${id === "problems" ? "text-gap" : "text-muted"}`}>{count}</span>}
           </button>
         ))}
         <button
@@ -69,7 +69,7 @@ export function BottomPanel({
           onClick={onToggle}
           aria-expanded={open}
           aria-label={open ? "collapse panel" : "expand panel"}
-          className="ml-auto flex w-8 items-center justify-center text-dim outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
+          className="ml-auto flex w-8 items-center justify-center text-muted outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
         >
           {open ? <ChevronDown size={14} strokeWidth={1.5} /> : <ChevronUp size={14} strokeWidth={1.5} />}
         </button>
@@ -90,7 +90,7 @@ export function BottomPanel({
 
 function Problems({ failingTests, onOpenTest }: { failingTests: string[]; onOpenTest: (nodeId: string) => void }) {
   if (failingTests.length === 0) {
-    return <p className="px-3 py-2 text-[12px] text-dim">no failing tests.</p>;
+    return <p className="px-3 py-2 text-[12px] text-muted">no failing tests.</p>;
   }
   return (
     <ul className="py-1 text-[12px] leading-[22px]">
@@ -102,11 +102,11 @@ function Problems({ failingTests, onOpenTest }: { failingTests: string[]; onOpen
               type="button"
               onClick={() => onOpenTest(nodeId)}
               title={`open ${nodeId}`}
-              className="flex w-full items-center gap-2 px-3 text-left outline-none transition-colors duration-[120ms] hover:bg-hover focus-visible:bg-hover"
+              className="flex w-full items-center gap-2 px-3 text-left outline-none transition-colors duration-[120ms] hover:bg-surface-3 focus-visible:bg-surface-3"
             >
-              <span className="shrink-0 text-error">✗</span>
+              <span className="shrink-0 text-gap">✗</span>
               <span className="shrink-0 text-text">{names[names.length - 1] ?? path}</span>
-              <span className="min-w-0 truncate text-dim">{[path, ...names.slice(0, -1)].join(" · ")}</span>
+              <span className="min-w-0 truncate text-muted">{[path, ...names.slice(0, -1)].join(" · ")}</span>
             </button>
           </li>
         );
@@ -134,7 +134,7 @@ function Output({
 
   if (attempts.length === 0) {
     return (
-      <p className="px-3 py-2 text-[12px] text-dim">
+      <p className="px-3 py-2 text-[12px] text-muted">
         nothing submitted yet. fix the source, then submit — the repo&apos;s own suite decides.
       </p>
     );
@@ -147,22 +147,22 @@ function Output({
           <div className="whitespace-pre-wrap text-text">
             $ submit #{a.n}
             {a.files.length > 0 && (
-              <span className="text-dim">
+              <span className="text-muted">
                 {" "}
-                · {a.files.join(", ")} · <span className="text-success">+{a.added}</span>{" "}
-                <span className="text-error">−{a.removed}</span>
+                · {a.files.join(", ")} · <span className="text-keep">+{a.added}</span>{" "}
+                <span className="text-gap">−{a.removed}</span>
               </span>
             )}
           </div>
 
-          {a.state === "blocked" && <div className="text-error">✗ {a.message}</div>}
-          {a.state === "error" && <div className="text-error">✗ {a.message}</div>}
-          {a.state === "sending" && <div className="text-dim">· sending</div>}
+          {a.state === "blocked" && <div className="text-gap">✗ {a.message}</div>}
+          {a.state === "error" && <div className="text-gap">✗ {a.message}</div>}
+          {a.state === "sending" && <div className="text-muted">· sending</div>}
           {(a.state === "grading" || a.state === "done") && (
-            <div className="text-dim">· {a.submissionId} · patch applied in a clean tree, full suite running</div>
+            <div className="text-muted">· {a.submissionId} · patch applied in a clean tree, full suite running</div>
           )}
           {a.state === "grading" && (
-            <div className="text-dim">
+            <div className="text-muted">
               · {clock(now - a.sentAt)}
               {now - a.sentAt > SLOW_AFTER_MS && " · slower than usual, still waiting"}{" "}
               <Cursor className="!h-[0.9em] !w-[0.45em]" />
@@ -170,16 +170,16 @@ function Output({
           )}
 
           {a.result?.verdict === "PASS" && (
-            <div className="font-bold text-success">
+            <div className="font-bold text-keep">
               ✓ PASS — {thousands(a.result.tests_passed ?? 0)} tests green · opening the reveal…
             </div>
           )}
           {a.result?.verdict === "FAIL" && (
             <>
-              <div className="text-error">
+              <div className="text-gap">
                 ✗ FAIL — {a.result.reason ?? `${plural(a.result.failing_tests?.length ?? 0, "test")} still red`}
                 {a.result.tests_passed !== undefined && (
-                  <span className="text-dim"> · {thousands(a.result.tests_passed)} passed</span>
+                  <span className="text-muted"> · {thousands(a.result.tests_passed)} passed</span>
                 )}
               </div>
               {(a.result.failing_tests ?? []).slice(0, 12).map((t) => (
@@ -187,20 +187,20 @@ function Output({
                   key={t}
                   type="button"
                   onClick={() => onOpenTest(t)}
-                  className="block max-w-full truncate pl-4 text-left text-dim hover:text-text"
+                  className="block max-w-full truncate pl-4 text-left text-muted hover:text-text"
                 >
                   {t}
                 </button>
               ))}
               {(a.result.failing_tests?.length ?? 0) > 12 && (
-                <div className="pl-4 text-dim">+{(a.result.failing_tests?.length ?? 0) - 12} more</div>
+                <div className="pl-4 text-muted">+{(a.result.failing_tests?.length ?? 0) - 12} more</div>
               )}
             </>
           )}
           {a.result?.verdict === "REJECTED" && (
             <>
-              <div className="text-error">✗ {REJECTION[a.result.reason ?? ""] ?? `rejected: ${a.result.reason}`}</div>
-              {a.result.detail && <div className="whitespace-pre-wrap pl-4 text-dim">{a.result.detail.slice(0, 600)}</div>}
+              <div className="text-gap">✗ {REJECTION[a.result.reason ?? ""] ?? `rejected: ${a.result.reason}`}</div>
+              {a.result.detail && <div className="whitespace-pre-wrap pl-4 text-muted">{a.result.detail.slice(0, 600)}</div>}
             </>
           )}
         </div>

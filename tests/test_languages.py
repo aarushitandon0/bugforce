@@ -14,6 +14,7 @@ import pytest
 from bugforge import mutate
 from bugforge.languages import (
     DEFAULT_LANGUAGE,
+    GoAdapter,
     LanguageAdapter,
     PythonAdapter,
     UnsupportedLanguageError,
@@ -31,22 +32,28 @@ SOURCE = textwrap.dedent(
 )
 
 
-def test_python_is_the_only_registered_language():
-    assert available_languages() == ["python"]
+def test_registered_languages():
+    assert available_languages() == ["go", "python"]
+    # Python stays the default: it is what an image built before the language
+    # field existed will ask for, and REPO_LANGUAGE defaults to it.
     assert DEFAULT_LANGUAGE == "python"
     assert get_adapter().name == "python"
     assert get_adapter() is get_adapter("PYTHON")
+    assert get_adapter("go").name == "go"
+    assert get_adapter("go") is get_adapter("Go")
 
 
 def test_unknown_language_names_what_is_available():
     with pytest.raises(UnsupportedLanguageError) as exc:
-        get_adapter("go")
-    assert "go" in str(exc.value)
+        get_adapter("haskell")
+    assert "haskell" in str(exc.value)
     assert "python" in str(exc.value)
+    assert "go" in str(exc.value)
 
 
 def test_adapter_satisfies_the_protocol():
     assert isinstance(PythonAdapter(), LanguageAdapter)
+    assert isinstance(GoAdapter(), LanguageAdapter)
 
 
 def test_find_candidates_matches_the_underlying_function():

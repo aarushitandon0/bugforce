@@ -17,6 +17,11 @@ class RunnerConfig:
 
     package: str = ""
     python: str = sys.executable
+    # The Go toolchain, for adapters that shell out to it. Named rather than
+    # reusing `python` because a repo needs exactly one of the two and an
+    # adapter asking for the wrong one should fail loudly, not silently run
+    # the wrong binary.
+    go: str = "go"
     timeout_s: int = 30
     use_cache: bool = True
 

@@ -15,6 +15,7 @@ contains any non-ASCII character, so every offset computation here works on
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from bugforge.models import MutationSite
@@ -377,11 +378,31 @@ def find_candidates(source: str, path: str) -> list[MutationSite]:
     return candidates
 
 
-def apply(source: str, site: MutationSite) -> str:
+def _check_python_syntax(source: str, path: str) -> None:
+    """Syntax validator for splice(): raises MutationError on invalid code."""
+    try:
+        ast.parse(source, filename=path)
+    except SyntaxError as e:
+        raise MutationError(f"mutation at {path} produced invalid syntax: {e}") from e
+
+
+def splice(
+    source: str,
+    site: MutationSite,
+    check_syntax: Callable[[str, str], None] = _check_python_syntax,
+) -> str:
     """Applies one mutation via a surgical byte-level splice on a single line.
 
     Never touches ast.unparse -- every byte outside [col_start, col_end) on
     `site.lineno` is byte-identical to the input.
+
+    This is the language-neutral half of Phase 2: nothing below reads Python
+    syntax, it works on lines and UTF-8 byte offsets, which is all any
+    language's positions reduce to. `check_syntax(source, path)` is the one
+    language-specific step and must raise MutationError if the spliced result
+    does not parse. Go passes its own (bugforge/languages/go.py) rather than
+    reimplementing the offset arithmetic -- a second copy of this function is
+    exactly the silent corruption the byte discipline here exists to prevent.
     """
     if "\n" in site.mutated_token or "\r" in site.mutated_token:
         raise MutationError("mutated_token must not span multiple lines")
@@ -423,11 +444,7 @@ def apply(source: str, site: MutationSite) -> str:
     lines[site.lineno - 1] = new_line
     mutated_source = "".join(lines)
 
-    try:
-        ast.parse(mutated_source, filename=site.path)
-    except SyntaxError as e:
-        raise MutationError(f"mutation at {site.path}:{site.lineno} produced invalid syntax: {e}") from e
-
+    check_syntax(mutated_source, site.path)
     original_lines = source.splitlines(keepends=True)
     mutated_lines = mutated_source.splitlines(keepends=True)
     if len(original_lines) != len(mutated_lines):
@@ -437,3 +454,8 @@ def apply(source: str, site: MutationSite) -> str:
         raise MutationError(f"mutation touched {changed} lines, expected exactly 1")
 
     return mutated_source
+
+
+def apply(source: str, site: MutationSite) -> str:
+    """splice() with Python's syntax check -- the Phase 2 entry point."""
+    return splice(source, site, _check_python_syntax)

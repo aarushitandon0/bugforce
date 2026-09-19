@@ -22,8 +22,6 @@ import tarfile
 import time
 from pathlib import Path
 
-from bugforge.runner import run_pytest
-
 from cloud import anti_cheat, config, ddb_io, progress, s3_io, workspace
 
 log = logging.getLogger()
@@ -158,8 +156,9 @@ def handler(event: dict, context) -> dict:
 
     # (a) hygiene -- path rules first, so a patch aimed at a test file never
     # touches the tree at all.
+    language = config.repo_language()
     paths = anti_cheat.patch_target_paths(patch_text)
-    path_check = anti_cheat.check_paths(paths)
+    path_check = anti_cheat.check_paths(paths, language)
     if not path_check.ok:
         return _record(
             submission_id,
@@ -181,7 +180,7 @@ def handler(event: dict, context) -> dict:
         )
 
     # (a, continued) the content rules need the applied result to compare against
-    diff_check = anti_cheat.check_tree_diff(original, work, path_check.touched_paths)
+    diff_check = anti_cheat.check_tree_diff(original, work, path_check.touched_paths, language)
     if not diff_check.ok:
         return _record(
             submission_id,
@@ -189,7 +188,9 @@ def handler(event: dict, context) -> dict:
         )
 
     # (c) full suite
-    result = run_pytest(work, workspace.python_exe(), test_ids=None, timeout=SUITE_TIMEOUT_S)
+    result = workspace.adapter().run_tests(
+        work, test_ids=None, runner=workspace.runner_config(SUITE_TIMEOUT_S)
+    )
 
     if result.timed_out:
         return _record(
@@ -207,7 +208,17 @@ def handler(event: dict, context) -> dict:
         )
 
     # (d) verdict
-    green = result.num_failed_or_errored == 0 and result.returncode == 0
+    #
+    # `passed > 0` is not belt-and-braces, it closes a real hole. A suite that
+    # reported no results at all is not a green suite, and a patch can cause
+    # exactly that: `os.Exit(0)` added to Go code that runs during the suite
+    # ends the test binary with status 0 before a single result is printed,
+    # and `go test` prints "ok" over it. The anti-cheat rules reject that patch
+    # first; this is the second lock, on the verdict itself, because anything
+    # that ends a run early and quietly lands here looking identical.
+    green = (
+        result.num_failed_or_errored == 0 and result.returncode == 0 and result.passed > 0
+    )
     if green:
         challenge = ddb_io.get(config.table("challenges"), {"challenge_id": challenge_id}) or {}
         _award(user, challenge, challenge_id, event.get("seconds"))

@@ -5,54 +5,62 @@ traceback and score breakdown, the rejection taxonomy, and the test-gap list.
 
 Usage:
     python scripts/demo_pipeline.py <repo_dir> <package> <venv_python> [--limit N]
+    python scripts/demo_pipeline.py <repo_dir> <module_path> --language go
+
+`venv_python` is the interpreter the repo's dependencies are installed into,
+and is only meaningful for Python repos -- `go test` needs no equivalent.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 
-from bugforge.baseline import compute_baseline, is_cached
-from bugforge.languages import get_adapter
+from bugforge.baseline import is_cached
+from bugforge.languages import DEFAULT_LANGUAGE, available_languages, get_adapter
+from bugforge.models import RunnerConfig
 from bugforge.mutate import MutationError
 from bugforge.package import package_challenge
 from bugforge.run_report import Stopwatch, build_run_report, format_taxonomy, write_run_report
 from bugforge.select import Outcome, run_selection
 
 
-# Python is the only registered adapter today; see bugforge/languages/.
-adapter = get_adapter()
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("repo_dir", type=Path)
     parser.add_argument("package")
-    parser.add_argument("venv_python")
+    # Optional: only the Python adapter has anything to do with an
+    # interpreter. A Go repo's tests are run by `go test`.
+    parser.add_argument("venv_python", nargs="?", default=sys.executable)
+    parser.add_argument("--language", default=DEFAULT_LANGUAGE, choices=available_languages())
     parser.add_argument("--limit", type=int, default=None, help="cap number of candidates for a faster demo run")
     parser.add_argument("--output-dir", type=Path, default=Path("phase3_output"))
     args = parser.parse_args()
     args.repo_dir = args.repo_dir.resolve()
     args.venv_python = str(Path(args.venv_python).resolve())
 
+    adapter = get_adapter(args.language)
+    runner = RunnerConfig(package=args.package, python=args.venv_python)
+
     watch = Stopwatch()
 
     print("loading baseline...")
     baseline_cache_hit = is_cached(args.repo_dir)
     with watch.stage("baseline"):
-        baseline = compute_baseline(args.repo_dir, args.package, args.venv_python)
+        baseline = adapter.baseline(args.repo_dir, runner)
     print(f"baseline: {baseline.total_tests} tests, {baseline.covered_line_count()} covered lines "
           f"({'cache hit' if baseline_cache_hit else 'computed'})\n")
 
-    pkg_dir = args.repo_dir / args.package
+    pkg_dir = adapter.source_root(args.repo_dir, args.package)
     sites_and_sources = []
     sources_by_file = {}
     candidates_generated = 0
     generate_started = time.perf_counter()
-    for py_file in adapter.discover_sources(pkg_dir):
-        rel = str(py_file.relative_to(args.repo_dir)).replace("\\", "/")
-        source = py_file.read_text(encoding="utf-8")
+    for source_file in adapter.discover_sources(pkg_dir):
+        rel = str(source_file.relative_to(args.repo_dir)).replace("\\", "/")
+        source = source_file.read_text(encoding="utf-8")
         sources_by_file[rel] = source
         try:
             sites = adapter.find_candidates(source, rel)
@@ -77,7 +85,7 @@ def main() -> None:
 
     print(f"running {len(sites_and_sources)} covered candidates through the pipeline...\n")
     with watch.stage("selection_total"):
-        results, taxonomy = run_selection(args.repo_dir, args.venv_python, baseline, sites_and_sources)
+        results, taxonomy = run_selection(args.repo_dir, adapter, runner, baseline, sites_and_sources)
 
     # (b) rejection taxonomy -- written to disk as well as printed, because
     # the blog post and the rejection slide are downstream of these counts.

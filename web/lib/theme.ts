@@ -3,7 +3,7 @@
 /**
  * The theme, as one attribute on <html>.
  *
- * Every colour in the app resolves through the --bf-* custom properties that
+ * Every colour in the app resolves through the design tokens that
  * app/globals.css defines under :root and [data-theme="light"], so flipping
  * this attribute is the whole mechanism -- no component re-renders for colour,
  * and CodeMirror follows because its stylesheet is written in the same

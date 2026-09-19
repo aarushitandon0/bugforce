@@ -54,7 +54,7 @@ export function DifficultyBars({
   total: number;
   size?: "sm" | "lg";
 }) {
-  if (!breakdown) return <span className="text-[11px] text-dim">no breakdown</span>;
+  if (!breakdown) return <span className="text-[11px] text-muted">no breakdown</span>;
   const tall = size === "lg";
 
   return (
@@ -70,10 +70,10 @@ export function DifficultyBars({
             content={
               <>
                 <span className="block text-text">
-                  {metric.name} <span className="text-dim">·</span> {value}
+                  {metric.name} <span className="text-muted">·</span> {value}
                 </span>
-                <span className="mt-1 block text-dim">{metric.explain}</span>
-                <span className="mt-1.5 block text-dim">
+                <span className="mt-1 block text-muted">{metric.explain}</span>
+                <span className="mt-1.5 block text-muted">
                   this bar: {Math.round(fill * 100)}% of the hardest this input gets
                 </span>
               </>
@@ -85,7 +85,7 @@ export function DifficultyBars({
               </span>
               {/* the full word needs ~54px a bar; below sm that overflows a card,
                   so the short letter stands in and the tooltip carries the name */}
-              <span className={`leading-none text-dim ${tall ? "text-[10px]" : "text-[9px]"}`}>
+              <span className={`leading-none text-muted ${tall ? "text-[10px]" : "text-[9px]"}`}>
                 {tall ? (
                   <>
                     <span className="hidden sm:inline">{metric.name.split(" ")[0]}</span>

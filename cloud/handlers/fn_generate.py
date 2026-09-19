@@ -16,7 +16,7 @@ from pathlib import Path
 
 from bugforge.languages import get_adapter
 from bugforge.models import Baseline
-from bugforge.mutate import MutationError, apply, find_candidates
+from bugforge.mutate import MutationError
 
 from cloud import config, ids, s3_io, workspace
 
@@ -25,20 +25,10 @@ log.setLevel(logging.INFO)
 
 BATCH_SIZE = 15
 
-# The only language we generate for. Asking the registry rather than reaching
-# for mutate.py directly is what keeps this handler language-agnostic; see
+# The image's repo decides the language, and the registry decides what that
+# means. This handler never imports a language-specific module; see
 # bugforge/languages/base.py.
-ADAPTER = get_adapter()
-
-
-def package_dir(tree: Path, package: str) -> Path:
-    # Root layout only, and deliberately so: pytest prepends the rootdir of the
-    # mutated copy to sys.path, which shadows the installed package only when
-    # the package lives at the root. The image build enforces the same rule.
-    candidate = tree / package
-    if not candidate.is_dir():
-        raise RuntimeError(f"package {package!r} not found at {candidate}")
-    return candidate
+ADAPTER = get_adapter(config.repo_language())
 
 
 def handler(event: dict, context) -> dict:
@@ -46,21 +36,21 @@ def handler(event: dict, context) -> dict:
     baseline = Baseline(**s3_io.get_json(config.bucket(), event["baseline_key"]))
 
     tree = workspace.repo_tree(config.repo_dir())
-    pkg = package_dir(tree, config.repo_package())
+    root = ADAPTER.source_root(tree, config.repo_package())
 
     sites: list[dict] = []
-    for py_file in ADAPTER.discover_sources(pkg):
-        rel = str(py_file.relative_to(tree)).replace("\\", "/")
-        source = py_file.read_text(encoding="utf-8")
+    for source_file in ADAPTER.discover_sources(root):
+        rel = str(source_file.relative_to(tree)).replace("\\", "/")
+        source = source_file.read_text(encoding="utf-8")
         try:
-            found = find_candidates(source, rel)
+            found = ADAPTER.find_candidates(source, rel)
         except SyntaxError:
             continue
         for site in found:
             if not baseline.tests_for_line(site.path, site.lineno):
                 continue
             try:
-                apply(source, site)  # proves it splices cleanly before we ship it
+                ADAPTER.apply(source, site)  # proves it splices before we ship it
             except MutationError:
                 continue
             sites.append(asdict(site))

@@ -46,7 +46,11 @@ RUN cd /repo && python -m pytest -q --no-header -x -p no:cacheprovider \
 COPY bugforge ${LAMBDA_TASK_ROOT}/bugforge
 COPY cloud ${LAMBDA_TASK_ROOT}/cloud
 
+# REPO_LANGUAGE is explicit even though cloud/config.py defaults to it: now
+# that a second language exists, relying on the default would make a
+# mislabelled image fail as unparseable source rather than as a missing setting.
 ENV REPO_DIR=/repo \
+    REPO_LANGUAGE=python \
     HOME=/tmp \
     TMPDIR=/tmp \
     PYTEST_ADDOPTS="-p no:cacheprovider" \

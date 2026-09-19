@@ -15,7 +15,8 @@ import {
 import { countLines, type Attempt } from "@/lib/attempt";
 import { Workspace, type FrameMark, type WorkspaceFile } from "@/lib/editor";
 import { clock, plural, repoDisplay, repoShort, slug, thousands } from "@/lib/format";
-import { buildPatch, editorText, isModified, isTestPath, pathProblem } from "@/lib/patch";
+import { rulesFor } from "@/lib/lang";
+import { buildPatch, editorText, isModified, pathProblem } from "@/lib/patch";
 import { markSolved, readLocal, writeLocal } from "@/lib/progress";
 import { useSession } from "@/lib/session";
 import type { Visit } from "@/lib/replay";
@@ -49,9 +50,9 @@ interface LogLine {
 const TONE: Record<LogLine["tone"], string> = {
   command: "text-text",
   text: "text-text",
-  dim: "text-dim",
-  error: "text-error",
-  success: "text-success",
+  dim: "text-muted",
+  error: "text-gap",
+  success: "text-keep",
 };
 
 interface Bundle {
@@ -92,7 +93,7 @@ function useBundle(id: string) {
           const tb = await fetch(urls.traceback_url, { cache: "no-store" });
           traceback = tb.ok ? await tb.text() : "";
         }
-        const frames = parseTraceback(traceback);
+        const frames = parseTraceback(traceback, detail.language);
         const paths = [...tree.files.keys()];
         const resolved = frames.map((f) => resolveFramePath(f.path, paths));
         log({ tone: "dim", text: `· ${plural(tree.files.size, "file")} unpacked` });
@@ -184,7 +185,7 @@ export function Solve() {
   if (!id) {
     return (
       <Bare>
-        <p className="p-6 text-error">✗ no challenge named in the URL</p>
+        <p className="p-6 text-gap">✗ no challenge named in the URL</p>
       </Bare>
     );
   }
@@ -198,7 +199,7 @@ export function Solve() {
             </div>
           ))}
           {error ? (
-            <div className="text-error animate-fade">
+            <div className="text-gap animate-fade">
               ✗ {error}
               <button type="button" onClick={retry} className="link ml-4">
                 retry
@@ -226,6 +227,9 @@ function Bare({ children }: { children: React.ReactNode }) {
 function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   const router = useRouter();
   const { detail, tree, frames, resolved } = bundle;
+  // Everything about what may be edited, and what counts as a test file,
+  // comes from here -- one lookup, mirroring cloud/anti_cheat.py.
+  const rules = rulesFor(detail.language);
 
   // ----- derived, fixed for the life of the bundle -----
   const nodes = useMemo(() => toNodes(tree.files.keys()), [tree]);
@@ -371,11 +375,15 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
       return {
         path,
         text,
-        readOnly: isTestPath(path) || !path.endsWith(".py"),
+        // Test files and files of another language open read-only, because
+        // the grader would reject a patch touching them anyway. The rule has
+        // to come from the challenge's language: with ".py" hard-coded, every
+        // file in a Go challenge was read-only and it could not be solved.
+        readOnly: rules.isTestPath(path) || !path.endsWith(rules.sourceSuffix),
         marks: marksByPath.get(path) ?? [],
       };
     },
-    [currentText, marksByPath],
+    [currentText, marksByPath, rules],
   );
 
   const flushDocs = useCallback(() => {
@@ -575,7 +583,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
     setBottomTab("output");
     setBottomOpen(true);
 
-    const problem = pathProblem(paths);
+    const problem = pathProblem(paths, detail.language);
     if (problem) {
       setAttempts((as) => [
         ...as,
@@ -690,7 +698,8 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
 
   // ----- render -----
   const labels = useMemo(() => tabLabels(tabs), [tabs]);
-  const activeReadOnly = active !== null && (isTestPath(active) || !active.endsWith(".py"));
+  const activeReadOnly =
+    active !== null && (rules.isTestPath(active) || !active.endsWith(rules.sourceSuffix));
   const lastAttempt = attempts[attempts.length - 1];
   const statusName = `${repoShort(detail.repo)}/${slug(detail.title) || "challenge"}`;
 
@@ -714,14 +723,14 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
   return (
     <div className="flex min-h-dvh flex-col lg:h-dvh">
       {/* the breadcrumb row: a back affordance instead of a site nav */}
-      <header className="flex h-9 shrink-0 items-center gap-3 border-b border-line bg-chrome px-3 text-[11.5px]">
+      <header className="flex h-9 shrink-0 items-center gap-3 border-b border-line bg-surface-2 px-3 text-[11.5px]">
         <Link
           href={`/repo/?name=${encodeURIComponent(detail.repo)}`}
-          className="shrink-0 text-dim outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
+          className="shrink-0 text-muted outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
         >
           &larr; {repoDisplay(detail.repo)} course
         </Link>
-        <span aria-hidden className="h-4 w-px shrink-0 bg-line" />
+        <span aria-hidden className="h-4 w-px shrink-0 bg-line-strong" />
         <Breadcrumbs path={active} scope={scope} onReveal={revealInTree} />
         <ThemeToggle className="ml-auto shrink-0" />
       </header>
@@ -784,12 +793,12 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                           className="group block w-full text-left text-[11.5px] leading-[1.45] outline-none"
                         >
                           <span className="flex gap-1.5">
-                            <span className="text-error">&#10007;</span>
+                            <span className="text-gap">&#10007;</span>
                             <span className="min-w-0 break-all text-text group-hover:underline group-focus-visible:underline">
                               {names[names.length - 1] ?? path}
                             </span>
                           </span>
-                          <span className="block truncate pl-[2.2ch] text-[10.5px] text-dim">
+                          <span className="block truncate pl-[2.2ch] text-[10.5px] text-muted">
                             {[...names.slice(0, -1), path.split("/").pop()].join(" · ")}
                           </span>
                         </button>
@@ -806,13 +815,13 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                   <h3 className="text-[15px] font-bold leading-snug text-text">{detail.title}</h3>
                   <p className="mt-2 text-[12px] leading-[1.6] text-text/90">{detail.description}</p>
                   <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
-                    <dt className="text-dim">repo</dt>
+                    <dt className="text-muted">repo</dt>
                     <dd className="truncate text-text">{repoDisplay(detail.repo)}</dd>
-                    <dt className="text-dim">licence</dt>
+                    <dt className="text-muted">licence</dt>
                     <dd className="truncate text-text">{detail.license || "—"}</dd>
-                    <dt className="text-dim">language</dt>
+                    <dt className="text-muted">language</dt>
                     <dd className="text-text">{detail.language.toLowerCase()}</dd>
-                    <dt className="text-dim">suite</dt>
+                    <dt className="text-muted">suite</dt>
                     <dd className="text-text">{thousands(detail.total_tests)} tests</dd>
                   </dl>
                 </div>
@@ -833,7 +842,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
 
         {/* CENTER: tabs, editor, bottom dock */}
         <section className="flex h-[72vh] min-h-0 min-w-0 flex-1 flex-col lg:h-auto" aria-label="editor">
-          <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-chrome">
+          <div className="flex h-9 shrink-0 items-stretch border-b border-line bg-surface-2">
             <div role="tablist" aria-label="open files" className="flex min-w-0 flex-1 overflow-x-auto">
               {tabs.map((path) => {
                 const label = labels.get(path)!;
@@ -850,7 +859,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                       }
                     }}
                     className={`group flex shrink-0 items-stretch border-r border-line transition-colors duration-[120ms] ${
-                      isActive ? "bg-base text-text" : "bg-chrome text-dim hover:bg-hover hover:text-text"
+                      isActive ? "bg-surface-1 text-text" : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-text"
                     }`}
                   >
                     <button
@@ -860,25 +869,25 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                       title={path}
                       onClick={() => open(path)}
                       className={`flex items-center gap-1.5 border-t-2 pr-1 pl-3 text-[12px] outline-none transition-colors duration-[120ms] ${
-                        isActive ? "border-causal" : "border-transparent"
+                        isActive ? "border-frame" : "border-transparent"
                       }`}
                     >
-                      {traced.has(path) && <span aria-hidden className="block h-[5px] w-[5px] shrink-0 bg-causal" />}
+                      {traced.has(path) && <span aria-hidden className="block h-[5px] w-[5px] shrink-0 bg-frame" />}
                       <span>{label.name}</span>
-                      {label.hint && <span className="text-[10.5px] text-dim">{label.hint}</span>}
+                      {label.hint && <span className="text-[10.5px] text-muted">{label.hint}</span>}
                     </button>
                     <button
                       type="button"
                       onClick={() => closeTab(path)}
                       aria-label={`close ${path}`}
                       className={`flex w-6 items-center justify-center border-t-2 text-[13px] outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text ${
-                        isActive ? "border-causal" : "border-transparent"
+                        isActive ? "border-frame" : "border-transparent"
                       }`}
                     >
                       {/* a dot for unsaved changes; the close X takes over on hover */}
                       {isDirty ? (
                         <>
-                          <span className="text-error group-hover:hidden" aria-label="modified">
+                          <span className="text-gap group-hover:hidden" aria-label="modified">
                             &#9679;
                           </span>
                           <span className="hidden group-hover:inline">&times;</span>
@@ -893,12 +902,12 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
                 );
               })}
             </div>
-            <div className="flex shrink-0 items-center gap-3 px-3 text-[11px] text-dim">
+            <div className="flex shrink-0 items-center gap-3 px-3 text-[11px] text-muted">
               {activeReadOnly && (
                 <span title="test files and non-Python files can't be patched">read-only &middot; the suite is the judge</span>
               )}
               {active && modified.has(active) && (
-                <button type="button" onClick={() => revert(active)} className="link text-dim hover:text-text">
+                <button type="button" onClick={() => revert(active)} className="link text-muted hover:text-text">
                   revert file
                 </button>
               )}
@@ -908,7 +917,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
           <div className="relative min-h-0 flex-1">
             <div ref={hostRef} className="absolute inset-0" />
             {active === null && (
-              <div className="absolute inset-0 flex items-center justify-center bg-base p-6 text-center text-dim animate-fade">
+              <div className="absolute inset-0 flex items-center justify-center bg-surface-1 p-6 text-center text-muted animate-fade">
                 <p>
                   open a frame from the trace, or a file from the tree.
                   <br />
@@ -950,7 +959,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
             <div className="flex items-start justify-between gap-3">
               <p className="label">
                 <span className={LABEL_COLOR[detail.difficulty_label]}>{detail.difficulty_label}</span>
-                <span className="text-dim"> &middot; {detail.language.toLowerCase()}</span>
+                <span className="text-muted"> &middot; {detail.language.toLowerCase()}</span>
               </p>
               <DifficultyBars breakdown={detail.breakdown} failing={detail.failing_test_count} total={detail.total_tests} />
             </div>
@@ -962,14 +971,14 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
             <div>
               <h2 className="label">time</h2>
               <p
-                className={`mt-0.5 text-[28px] font-bold leading-none tabular-nums tracking-[-0.02em] ${solvedAt ? "text-success" : "text-text"}`}
+                className={`mt-0.5 text-[28px] font-bold leading-none tabular-nums tracking-[-0.02em] ${solvedAt ? "text-keep" : "text-text"}`}
                 role="timer"
                 aria-label="time on this challenge"
               >
                 {clock(elapsed)}
               </p>
             </div>
-            <dl className="grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-[10.5px] text-dim">
+            <dl className="grid grid-cols-[auto_auto] gap-x-2 gap-y-0.5 text-[10.5px] text-muted">
               <dt className="text-right text-text">{mod}&crarr;</dt>
               <dd>submit</dd>
               <dt className="text-right text-text">
@@ -992,11 +1001,11 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
 
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             <h2 className="label">where you are</h2>
-            <p className="mt-2 text-[11.5px] leading-[1.6] text-dim">
+            <p className="mt-2 text-[11.5px] leading-[1.6] text-muted">
               {visited.size} of {resolved.filter(Boolean).length} frames visited &middot; {plural(tabs.length, "file")} open
               {modified.size > 0 && <> &middot; {modified.size} modified</>}
             </p>
-            <p className="mt-3 text-[11px] leading-[1.6] text-dim">
+            <p className="mt-3 text-[11px] leading-[1.6] text-muted">
               the trace shows where it failed, not where it broke. the amber row is where it raised; the violet gutter
               marks are the frames above it.
             </p>
@@ -1005,17 +1014,17 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
       </div>
 
       {/* BOTTOM: the status strip, one line, unchanged */}
-      <footer className="sticky bottom-0 z-20 flex h-7 shrink-0 items-center justify-between gap-4 border-t border-line bg-panel px-3 text-[11px] tabular-nums text-dim">
+      <footer className="sticky bottom-0 z-20 flex h-7 shrink-0 items-center justify-between gap-4 border-t border-line bg-surface-2 px-3 text-[11px] tabular-nums text-muted">
         <p className="flex min-w-0 items-center gap-2 truncate">
           <span className="text-text">{statusName}</span>
           <span>&middot;</span>
-          <span className={solvedAt ? "text-success" : "text-text"}>{clock(elapsed)}</span>
+          <span className={solvedAt ? "text-keep" : "text-text"}>{clock(elapsed)}</span>
           <span>&middot;</span>
           <span>{plural(tabs.length, "file")} open</span>
           {modified.size > 0 && (
             <>
               <span>&middot;</span>
-              <span className="text-error">{modified.size} modified</span>
+              <span className="text-gap">{modified.size} modified</span>
             </>
           )}
           <span>&middot;</span>
@@ -1023,7 +1032,7 @@ function Workbench({ id, bundle }: { id: string; bundle: Bundle }) {
             type="button"
             onClick={submit}
             disabled={grading || solvedAt !== null}
-            className="text-text transition-colors duration-[120ms] hover:text-success disabled:text-dim"
+            className="text-text transition-colors duration-[120ms] hover:text-keep disabled:text-muted"
           >
             {mod}&crarr; submit
           </button>
@@ -1056,10 +1065,10 @@ function AttemptSummary({ attempt, now }: { attempt: Attempt; now: number }) {
         grading · {clock(now - attempt.sentAt)} <Cursor className="!h-[0.9em] !w-[0.45em]" />
       </span>
     );
-  if (attempt.state === "blocked" || attempt.state === "error") return <span className="text-error">✗ {attempt.message}</span>;
+  if (attempt.state === "blocked" || attempt.state === "error") return <span className="text-gap">✗ {attempt.message}</span>;
   const r = attempt.result!;
-  if (r.verdict === "PASS") return <span className="font-bold text-success">PASS · {thousands(r.tests_passed ?? 0)} green</span>;
-  if (r.verdict === "FAIL") return <span className="text-error">FAIL · {plural(r.failing_tests?.length ?? 0, "test")} red</span>;
-  return <span className="text-error">REJECTED · {r.reason}</span>;
+  if (r.verdict === "PASS") return <span className="font-bold text-keep">PASS · {thousands(r.tests_passed ?? 0)} green</span>;
+  if (r.verdict === "FAIL") return <span className="text-gap">FAIL · {plural(r.failing_tests?.length ?? 0, "test")} red</span>;
+  return <span className="text-gap">REJECTED · {r.reason}</span>;
 }
 

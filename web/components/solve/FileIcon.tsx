@@ -45,7 +45,7 @@ export function FileIcon({ name, size = 13 }: { name: string; size?: number }) {
 export function FolderIcon({ open, size = 13 }: { open: boolean; size?: number }) {
   const Icon = open ? FolderOpen : FolderClosed;
   return (
-    <span aria-hidden className="flex shrink-0 items-center text-dim">
+    <span aria-hidden className="flex shrink-0 items-center text-muted">
       <Icon size={size} strokeWidth={1.5} />
     </span>
   );

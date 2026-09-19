@@ -10,6 +10,7 @@
  */
 
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { go } from "@codemirror/lang-go";
 import { python } from "@codemirror/lang-python";
 import { bracketMatching, HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
@@ -34,18 +35,19 @@ import { tags as t } from "@lezer/highlight";
  * redefines the same names, and CodeMirror's stylesheet needs no rebuild.
  */
 const C = {
-  base: "var(--bf-base)",
-  panel: "var(--bf-panel)",
-  line: "var(--bf-line)",
-  text: "var(--bf-text)",
-  dim: "var(--bf-dim)",
-  error: "var(--bf-error)",
-  success: "var(--bf-success)",
-  causal: "var(--bf-causal)",
-  hover: "var(--bf-hover)",
+  base: "var(--surface-1)",
+  panel: "var(--surface-2)",
+  line: "var(--border)",
+  text: "var(--text)",
+  dim: "var(--text-muted)",
+  /* the frame that raised, and the frames above it: trace semantics, not the
+     brand accent and not a terminal verdict */
+  raise: "var(--trace-raise)",
+  causal: "var(--trace-frame)",
+  hover: "var(--surface-3)",
 };
 
-/** `mix("var(--bf-x)", 24)` -> 24% of that colour over whatever is behind it. */
+/** `mix("var(--accent)", 24)` -> 24% of that colour over whatever is behind it. */
 const mix = (color: string, percent: number) => `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 
 // ---------------------------------------------------------------------------
@@ -72,20 +74,20 @@ const themeSpec = {
     ".cm-frame-mark": { display: "block", width: "7px", height: "7px" },
     ".cm-frame-mark.is-frame": { border: `1px solid ${C.causal}` },
     ".cm-frame-mark.is-visited": { backgroundColor: C.causal },
-    ".cm-frame-mark.is-exception": { backgroundColor: C.error, border: `1px solid ${C.error}` },
+    ".cm-frame-mark.is-exception": { backgroundColor: C.raise, border: `1px solid ${C.raise}` },
     ".cm-frame-line": { backgroundColor: mix(C.causal, 7) },
     // the failing line: a 6% amber wash plus a solid left border, so it stays
     // obvious against coloured syntax without recolouring the code itself
-    ".cm-exception-line": { backgroundColor: mix(C.error, 6), boxShadow: `inset 2px 0 0 0 ${C.error}` },
+    ".cm-exception-line": { backgroundColor: mix(C.raise, 6), boxShadow: `inset 2px 0 0 0 ${C.raise}` },
     ".cm-target-line": { outline: `1px solid ${mix(C.causal, 45)}`, outlineOffset: "-1px" },
     ".cm-matchingBracket, &.cm-focused .cm-matchingBracket": {
       backgroundColor: "transparent",
       outline: `1px solid ${C.dim}`,
     },
-    ".cm-nonmatchingBracket": { color: C.error },
+    ".cm-nonmatchingBracket": { color: C.raise },
     ".cm-selectionMatch": { backgroundColor: mix(C.dim, 20) },
-    ".cm-searchMatch": { backgroundColor: mix(C.error, 20), outline: `1px solid ${mix(C.error, 45)}` },
-    ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: mix(C.error, 45) },
+    ".cm-searchMatch": { backgroundColor: mix(C.raise, 20), outline: `1px solid ${mix(C.raise, 45)}` },
+    ".cm-searchMatch.cm-searchMatch-selected": { backgroundColor: mix(C.raise, 45) },
     ".cm-panels": { backgroundColor: C.panel, color: C.text, fontFamily: "inherit" },
     ".cm-panels.cm-panels-bottom": { borderTop: `1px solid ${C.line}` },
     ".cm-panels.cm-panels-top": { borderBottom: `1px solid ${C.line}` },
@@ -129,16 +131,16 @@ const themeCompartment = new Compartment();
  * they still read as special against this.
  */
 const SYN = {
-  keyword: "var(--bf-syn-keyword)",
-  string: "var(--bf-syn-string)",
-  number: "var(--bf-syn-number)",
-  comment: "var(--bf-syn-comment)",
-  fn: "var(--bf-syn-function)",
-  cls: "var(--bf-syn-class)",
-  decorator: "var(--bf-syn-decorator)",
-  operator: "var(--bf-syn-operator)",
-  variable: "var(--bf-syn-variable)",
-  invalid: "var(--bf-syn-invalid)",
+  keyword: "var(--syn-keyword)",
+  string: "var(--syn-string)",
+  number: "var(--syn-number)",
+  comment: "var(--syn-comment)",
+  fn: "var(--syn-function)",
+  cls: "var(--syn-class)",
+  decorator: "var(--syn-decorator)",
+  operator: "var(--syn-operator)",
+  variable: "var(--syn-variable)",
+  invalid: "var(--syn-invalid)",
 };
 
 const highlight = HighlightStyle.define([
@@ -327,6 +329,7 @@ export class Workspace {
       EditorState.tabSize.of(4),
     ];
     if (file.path.endsWith(".py")) extensions.push(python());
+    if (file.path.endsWith(".go")) extensions.push(go());
     if (file.readOnly) extensions.push(EditorState.readOnly.of(true));
     return EditorState.create({ doc: file.text, extensions });
   }

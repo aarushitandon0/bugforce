@@ -18,8 +18,7 @@ import logging
 from dataclasses import asdict
 
 from bugforge.models import Baseline, MutationSite
-from bugforge.mutate import apply
-from bugforge.runner import run_mutation
+from bugforge.runner import run_mutation_with
 from bugforge.select import (
     ADMIT_THRESHOLD,
     TIMEOUT_S,
@@ -45,12 +44,12 @@ def _pending_key(execution_id: str) -> str:
     return config.pending_key(execution_id)
 
 
-def _score_one(tree, python, baseline: Baseline, test_to_files, survivor: dict) -> dict:
+def _score_one(tree, adapter, runner, baseline: Baseline, test_to_files, survivor: dict) -> dict:
     site = MutationSite(**survivor["site"])
     source = (tree / site.path).read_text(encoding="utf-8")
-    mutated = apply(source, site)
+    mutated = adapter.apply(source, site)
 
-    full = run_mutation(tree, python, site, mutated, test_ids=None, timeout=TIMEOUT_S)
+    full = run_mutation_with(adapter, tree, site, mutated, test_ids=None, runner=runner)
     record = {"site": survivor["site"], "covering_tests": survivor["covering_tests"]}
 
     if full.timed_out:
@@ -136,10 +135,11 @@ def handler(event: dict, context) -> dict:
     baseline = Baseline(**s3_io.get_json(bucket, event["baseline_key"]))
     test_to_files = _build_test_to_files(baseline)
     tree = workspace.repo_tree(config.repo_dir())
-    python = workspace.python_exe()
+    adapter = workspace.adapter()
+    runner = workspace.runner_config(TIMEOUT_S)
 
     while pending and context.get_remaining_time_in_millis() > RESERVE_MS:
-        scored.append(_score_one(tree, python, baseline, test_to_files, pending.pop(0)))
+        scored.append(_score_one(tree, adapter, runner, baseline, test_to_files, pending.pop(0)))
 
     s3_io.put_json(bucket, pending_key, {"pending": pending, "scored": scored})
     admitted = [r for r in scored if r["outcome"] == Outcome.ADMITTED]

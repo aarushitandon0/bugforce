@@ -16,6 +16,9 @@
  * the suite ran on Windows; frames outside the repo have absolute paths.
  */
 
+import { rulesFor } from "./lang";
+import { parseGoTraceback } from "./traceback-go";
+
 export type ExcerptKind = "code" | "failing" | "caret" | "local" | "error";
 
 export interface ExcerptLine {
@@ -89,8 +92,23 @@ function buildFrame(index: number, match: RegExpExecArray, chunk: string[]): Fra
   };
 }
 
+/**
+ * Frames outermost first, deepest (where it failed) last, for whichever
+ * language produced the output.
+ *
+ * The two parsers share nothing but this contract -- a pytest traceback and a
+ * Go panic dump have no syntax in common -- so the dispatch is explicit
+ * rather than a heuristic sniff of the text. Everything downstream (the
+ * spine, the gutter markers, the replay chart) takes Frame[] and never asks
+ * which language it came from.
+ */
+export function parseTraceback(text: string, language?: string | null): Frame[] {
+  if (rulesFor(language).id === "go") return parseGoTraceback(text);
+  return parsePytestTraceback(text);
+}
+
 /** Frames outermost first, deepest (where the exception surfaced) last. */
-export function parseTraceback(text: string): Frame[] {
+export function parsePytestTraceback(text: string): Frame[] {
   const frames: Frame[] = [];
   let chunk: string[] = [];
   for (const raw of text.replace(/\r\n?/g, "\n").split("\n")) {

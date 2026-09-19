@@ -34,7 +34,7 @@ function heroSize(length: number): string {
 function Token({ text, tone }: { text: string; tone: string }) {
   if (text.trim() === "") {
     return (
-      <span className="inline-flex items-baseline gap-3 text-dim">
+      <span className="inline-flex items-baseline gap-3 text-muted">
         ∅<span className="text-[max(11px,0.16em)] font-normal tracking-normal">nothing</span>
       </span>
     );
@@ -43,7 +43,7 @@ function Token({ text, tone }: { text: string; tone: string }) {
 }
 
 function Line({ split, tone }: { split: TokenSplit; tone: "original" | "mutated" }) {
-  const box = tone === "original" ? "border-success/70 bg-success/10 text-success" : "border-error bg-error/15 text-error";
+  const box = tone === "original" ? "border-keep/70 bg-keep/10 text-keep" : "border-gap bg-gap/15 text-gap";
   return (
     <>
       {split.before}
@@ -93,12 +93,12 @@ export function Result() {
   return (
     <article className="pt-14">
       {/* verdict */}
-      <p className="text-[12px] text-dim">$ pytest · {data.submission_id}</p>
-      <h1 className="mt-2 text-[clamp(26px,4.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-success animate-fade">
+      <p className="text-[12px] text-muted">$ pytest · {data.submission_id}</p>
+      <h1 className="mt-2 text-[clamp(26px,4.4vw,44px)] font-bold leading-[1.1] tracking-[-0.02em] text-keep animate-fade">
         PASS — {thousands(data.tests_passed)} tests green
-        <Cursor className="ml-3 !bg-success" />
+        <Cursor className="ml-3 !bg-keep" />
       </h1>
-      <p className="mt-3 text-dim">
+      <p className="mt-3 text-muted">
         <span className="text-text">{data.title}</span>
         {record && (
           <>
@@ -116,32 +116,32 @@ export function Result() {
             Math.max(split.original.token.length, split.mutated.token.length),
           )}`}
         >
-          <Token text={split.original.token} tone="text-success" />
-          <span className="text-[0.45em] font-normal text-dim" aria-label="became">
+          <Token text={split.original.token} tone="text-keep" />
+          <span className="text-[0.45em] font-normal text-muted" aria-label="became">
             →
           </span>
-          <Token text={split.mutated.token} tone="text-error" />
+          <Token text={split.mutated.token} tone="text-gap" />
         </div>
-        <p className="mt-5 max-w-[80ch] text-dim">
+        <p className="mt-5 max-w-[80ch] text-muted">
           {split.mutated.token === "" ? (
             <>
-              BugForge deleted <code className="text-success">{split.original.token.trim()}</code>
+              BugForge deleted <code className="text-keep">{split.original.token.trim()}</code>
             </>
           ) : split.original.token === "" ? (
             <>
-              BugForge inserted <code className="text-error">{split.mutated.token.trim()}</code>
+              BugForge inserted <code className="text-gap">{split.mutated.token.trim()}</code>
             </>
           ) : (
             <>
-              BugForge changed <code className="text-success">{split.original.token}</code> to{" "}
-              <code className="text-error">{split.mutated.token}</code>
+              BugForge changed <code className="text-keep">{split.original.token}</code> to{" "}
+              <code className="text-gap">{split.mutated.token}</code>
             </>
           )}
           {OPERATOR[data.operator] ? ` (${OPERATOR[data.operator]})` : ""}. Nothing else in the repo was touched.
         </p>
 
-        <div className="mt-8 overflow-x-auto border border-line bg-panel">
-          <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-2 text-[11px] text-dim">
+        <div className="mt-8 overflow-x-auto border border-line bg-surface-2">
+          <div className="flex items-center justify-between gap-4 border-b border-line px-4 py-2 text-[11px] text-muted">
             <span className="truncate">
               {data.file_path}:{data.lineno}
             </span>
@@ -149,20 +149,20 @@ export function Result() {
           </div>
           <div className="px-4 py-4 text-[clamp(13px,1.6vw,17px)] leading-[1.9]">
             <div className="whitespace-pre">
-              <span className="mr-4 select-none text-success">-</span>
+              <span className="mr-4 select-none text-keep">-</span>
               <Line split={split.original} tone="original" />
-              <span className="ml-6 select-none text-[11px] text-dim">original</span>
+              <span className="ml-6 select-none text-[11px] text-muted">original</span>
             </div>
             <div className="whitespace-pre">
-              <span className="mr-4 select-none text-error">+</span>
+              <span className="mr-4 select-none text-gap">+</span>
               <Line split={split.mutated} tone="mutated" />
-              <span className="ml-6 select-none text-[11px] text-dim">what you were given</span>
+              <span className="ml-6 select-none text-[11px] text-muted">what you were given</span>
             </div>
           </div>
         </div>
 
         <details className="group mt-3 border border-line">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-[12px] text-dim hover:text-text">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-[12px] text-muted hover:text-text">
             <span>the full mutation diff, as applied</span>
             <span aria-hidden className="group-open:hidden">▸</span>
             <span aria-hidden className="hidden group-open:inline">▾</span>
@@ -173,19 +173,19 @@ export function Result() {
                 {diff.map((row, i) => {
                   const tone =
                     row.kind === "removed"
-                      ? "bg-success/[0.06] text-text"
+                      ? "bg-keep/[0.06] text-text"
                       : row.kind === "added"
-                        ? "bg-error/[0.08] text-text"
+                        ? "bg-gap/[0.08] text-text"
                         : row.kind === "context"
-                          ? "text-dim"
-                          : "text-dim/70";
+                          ? "text-muted"
+                          : "text-muted/70";
                   const sign = row.kind === "removed" ? "-" : row.kind === "added" ? "+" : " ";
                   const isSite = row.kind === "removed" || row.kind === "added";
                   return (
                     <tr key={i} className={tone}>
-                      <td className="w-[1%] select-none px-2 text-right tabular-nums text-dim/70">{row.oldLine ?? ""}</td>
-                      <td className="w-[1%] select-none px-2 text-right tabular-nums text-dim/70">{row.newLine ?? ""}</td>
-                      <td className={`w-[1%] select-none px-1 ${row.kind === "removed" ? "text-success" : row.kind === "added" ? "text-error" : ""}`}>
+                      <td className="w-[1%] select-none px-2 text-right tabular-nums text-muted/70">{row.oldLine ?? ""}</td>
+                      <td className="w-[1%] select-none px-2 text-right tabular-nums text-muted/70">{row.newLine ?? ""}</td>
+                      <td className={`w-[1%] select-none px-1 ${row.kind === "removed" ? "text-keep" : row.kind === "added" ? "text-gap" : ""}`}>
                         {row.kind === "file" || row.kind === "hunk" ? "" : sign}
                       </td>
                       <td className="whitespace-pre pr-4">
@@ -205,7 +205,7 @@ export function Result() {
 
         {record?.patch && (
           <details className="group mt-3 border border-line">
-            <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-[12px] text-dim hover:text-text">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-2 text-[12px] text-muted hover:text-text">
               <span>your fix</span>
               <span aria-hidden className="group-open:hidden">▸</span>
               <span aria-hidden className="hidden group-open:inline">▾</span>
@@ -216,12 +216,12 @@ export function Result() {
                   key={i}
                   className={
                     line.startsWith("+++") || line.startsWith("---") || line.startsWith("@@")
-                      ? "text-dim"
+                      ? "text-muted"
                       : line.startsWith("+")
-                        ? "text-success"
+                        ? "text-keep"
                         : line.startsWith("-")
-                          ? "text-error"
-                          : "text-dim"
+                          ? "text-gap"
+                          : "text-muted"
                   }
                 >
                   {line || " "}
@@ -247,22 +247,22 @@ export function Result() {
       <section className="mt-16 border-t border-line pt-8" aria-label="where it came from">
         <h2 className="label">the repo</h2>
         <dl className="mt-4 grid max-w-[760px] grid-cols-[max-content_1fr] gap-x-8 gap-y-2">
-          <dt className="text-dim">repo</dt>
+          <dt className="text-muted">repo</dt>
           <dd className="text-text">{repoDisplay(data.repo)}</dd>
-          <dt className="text-dim">commit</dt>
+          <dt className="text-muted">commit</dt>
           <dd className="tabular-nums text-text">{shortSha}</dd>
-          <dt className="text-dim">file</dt>
+          <dt className="text-muted">file</dt>
           <dd className="break-all text-text">
             {data.file_path}
-            <span className="text-dim">:{data.lineno}</span>
+            <span className="text-muted">:{data.lineno}</span>
           </dd>
           {data.license && (
             <>
-              <dt className="text-dim">licence</dt>
+              <dt className="text-muted">licence</dt>
               <dd className="text-text">{data.license}</dd>
             </>
           )}
-          <dt className="text-dim">caught by</dt>
+          <dt className="text-muted">caught by</dt>
           <dd className="text-text">the repo&apos;s own suite. BugForge wrote no tests.</dd>
         </dl>
 
@@ -271,21 +271,21 @@ export function Result() {
             href={data.github_url}
             target="_blank"
             rel="noreferrer"
-            className="border border-text px-4 py-2.5 font-bold text-text transition-colors duration-[120ms] hover:bg-text hover:text-base"
+            className="border border-text px-4 py-2.5 font-bold text-text transition-colors duration-[120ms] hover:bg-text hover:text-surface-1"
           >
             view {data.file_path.split("/").pop()}:{data.lineno} on GitHub ↗
           </a>
           {next && (
             <Link
               href={solveHref(next.challenge_id)}
-              className="border border-line px-4 py-2.5 text-text transition-colors duration-[120ms] hover:border-dim"
+              className="border border-line px-4 py-2.5 text-text transition-colors duration-[120ms] hover:border-line-strong"
             >
               next bug: {next.title} →
             </Link>
           )}
           <Link
             href={`/repo/?name=${encodeURIComponent(data.repo)}`}
-            className="border border-line px-4 py-2.5 text-dim transition-colors duration-[120ms] hover:border-dim hover:text-text"
+            className="border border-line px-4 py-2.5 text-muted transition-colors duration-[120ms] hover:border-line-strong hover:text-text"
           >
             {solvedCount !== null && total !== null
               ? `${solvedCount} of ${total} bugs in ${repoShort(data.repo)} solved`

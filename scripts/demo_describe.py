@@ -33,6 +33,7 @@ from pathlib import Path
 from bugforge.baseline import compute_baseline, is_cached
 from bugforge.models import MutationSite
 from bugforge.languages import get_adapter
+from bugforge.models import RunnerConfig
 from bugforge.mutate import MutationError
 from bugforge.package import package_challenge
 from bugforge.run_report import Stopwatch, build_run_report, format_taxonomy, write_run_report
@@ -41,7 +42,8 @@ from cloud import describe as describe_module
 from cloud.ids import challenge_id
 
 
-# Python is the only registered adapter today; see bugforge/languages/.
+# The demo covers the Python repo only; the pipeline itself takes whichever
+# adapter it is handed (see bugforge/languages/).
 adapter = get_adapter()
 
 
@@ -65,7 +67,9 @@ def _run_selection(repo_dir: Path, package: str, python: str, baseline, watch: S
 
     print(f"running {len(pairs)} covered candidates through selection...")
     with watch.stage("selection_total"):
-        results, _ = run_selection(repo_dir, python, baseline, pairs)
+        results, _ = run_selection(
+            repo_dir, adapter, RunnerConfig(package=package, python=python), baseline, pairs
+        )
 
     records = [
         {

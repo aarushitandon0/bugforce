@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Environment
+.env
+.env.*
+
+# Generated/cache
+cache/
+phase3_output/
+phase5_output/
+
+# Node
+web/node_modules/
+web/.next/

@@ -44,8 +44,33 @@ def repo_url() -> str:
 
 
 def repo_package() -> str:
-    """Import package inside the repo that coverage measures (e.g. "tenacity")."""
+    """Import package inside the repo that coverage measures (e.g. "tenacity").
+
+    For Go this is the module path from go.mod ("github.com/golang-jwt/jwt/v5"),
+    which is what coverage profiles name files by.
+    """
     return env("REPO_PACKAGE")
+
+
+def repo_language() -> str:
+    """Which LanguageAdapter this image's repo needs (see bugforge/languages/).
+
+    Baked in at image build time from vetted_repos.json, because the image and
+    the language are the same choice: a Go repo's image has a Go toolchain in
+    it and a Python repo's does not. Defaults to python so an image built
+    before this existed keeps working.
+    """
+    return env("REPO_LANGUAGE", "python")
+
+
+# Display name for the language, for the card and the repo table. The adapter
+# names are lowercase ids; these are what a person reads.
+_LANGUAGE_LABELS = {"python": "Python", "go": "Go"}
+
+
+def repo_language_label() -> str:
+    lang = repo_language().lower()
+    return _LANGUAGE_LABELS.get(lang, lang.title())
 
 
 def repo_license() -> str:

@@ -5,92 +5,166 @@
  * radius and shadow scales are removed outright, so a rounded corner, a
  * shadow, a sans-serif face or an off-palette colour cannot be written with a
  * utility class at all.
+ *
+ * Everything below is declared once here and aliased into Tailwind in @theme.
+ * A component never writes a hex, a px radius, or a font size that is not one
+ * of the six steps in the type scale.
  */
-/*
- * Every colour in the app is one of these tokens. The palette is declared
- * twice -- once for dark, once for light -- as --bf-* custom properties, and
- * the Tailwind colour scale is a thin alias layer over them, so a utility
- * class like `text-dim` follows the theme without any component knowing a
- * theme exists.
- */
+
+/* ---------------------------------------------------------------------------
+ * dark
+ * ------------------------------------------------------------------------ */
 :root,
 [data-theme="dark"] {
   color-scheme: dark;
-  --bf-base: #0a0b0d;
-  --bf-panel: #111316;
-  --bf-line: #1e2126;
-  --bf-text: #c9cdd3;
-  --bf-dim: #6b7280;
-  --bf-error: #e8a33d;
-  --bf-success: #4ade80;
-  --bf-causal: #8b5cf6;
-  /* chrome: the activity bar and the row a panel sits on */
-  --bf-chrome: #0d0f12;
-  --bf-hover: #171a1f;
 
-  /*
-   * Editor syntax. Real hues -- code without colour reads as unfinished.
-   * Amber and violet stay out of the text and carry meaning through the row
-   * tint and the gutter instead, so they still stand out against this.
-   */
-  --bf-syn-keyword: #c678dd;
-  --bf-syn-string: #98c379;
-  --bf-syn-number: #d19a66;
-  --bf-syn-comment: #5c6370;
-  --bf-syn-function: #61afef;
-  --bf-syn-class: #e5c07b;
-  --bf-syn-decorator: #56b6c2;
-  --bf-syn-operator: #56b6c2;
-  --bf-syn-variable: #c9cdd3;
-  --bf-syn-invalid: #e06c75;
+  /* Three surface steps, so elevation is a surface change and never a shadow.
+     1 is the page, 2 is a panel sitting on it, 3 is a row lifting under the
+     pointer. */
+  --surface-1: #0d0d0f;
+  --surface-2: #151518;
+  --surface-3: #1c1c20;
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  --text: #edebe4;
+  --text-muted: #a29d91; /* 7.18:1 on --surface-1, 6.74:1 on --surface-2 */
+  --text-faint: #6e6a60;
+
+  /* One hue family across both themes. Dark runs lighter and warmer so it
+     holds the same weight against a near-black page that the light value
+     holds against paper. */
+  --accent: #e2701c;
+  --accent-hover: #f08432;
+  --accent-fg: #11100c;
+
+  /* Terminal verdicts. Deliberately not the brand accent: the stream is a
+     separate system that reports on a run, and colouring it with the CTA
+     colour would make a dropped mutation look like a call to action. */
+  --term-keep: #4fb06a;
+  --term-drop: #8a8578;
+  --term-gap: #d4574e;
+  --term-count: #c9a227;
+
+  /* Stack-trace semantics, a third system again: these belong to the editor
+     gutter and exist nowhere else. */
+  --trace-frame: #8b5cf6;
+  --trace-raise: #d99a2b;
+
+  /* Editor syntax. Real hues -- code without colour reads as unfinished.
+     The trace colours stay out of the text and carry meaning through the row
+     tint and the gutter instead, so they still stand out against this. */
+  --syn-keyword: #c678dd;
+  --syn-string: #98c379;
+  --syn-number: #d19a66;
+  --syn-comment: #5c6370;
+  --syn-function: #61afef;
+  --syn-class: #e5c07b;
+  --syn-decorator: #56b6c2;
+  --syn-operator: #56b6c2;
+  --syn-variable: #edebe4;
+  --syn-invalid: #e06c75;
 }
 
-/*
- * Light is not an inversion: it aims at a well-lit terminal on paper. Same
- * restraint -- square corners, hairline borders, no shadows -- new values.
- */
+/* ---------------------------------------------------------------------------
+ * light
+ *
+ * Not an inversion: it aims at a well-lit terminal on paper. Same restraint --
+ * square corners, hairline borders, no shadows -- new values.
+ * ------------------------------------------------------------------------ */
 [data-theme="light"] {
   color-scheme: light;
-  --bf-base: #fafaf8;
-  --bf-panel: #ffffff;
-  --bf-line: #e4e4e0;
-  --bf-text: #1c1c1a;
-  --bf-dim: #6b6b66;
-  --bf-error: #b45309;
-  --bf-success: #15803d;
-  --bf-causal: #6d28d9;
-  --bf-chrome: #f2f2ee;
-  --bf-hover: #efefea;
 
-  --bf-syn-keyword: #a626a4;
-  --bf-syn-string: #45803f;
-  --bf-syn-number: #b76b01;
-  --bf-syn-comment: #8e8e87;
-  --bf-syn-function: #3562c4;
-  --bf-syn-class: #9a6700;
-  --bf-syn-decorator: #0184bc;
-  --bf-syn-operator: #0184bc;
-  --bf-syn-variable: #1c1c1a;
-  --bf-syn-invalid: #ca1243;
+  --surface-1: #faf9f6;
+  --surface-2: #f2f0ea;
+  --surface-3: #e8e5dd;
+  --border: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.22);
+
+  --text: #16150f;
+  --text-muted: #56534a; /* 7.30:1 on --surface-1, 6.75:1 on --surface-2 */
+  --text-faint: #8a8578;
+
+  /* #BF5410 measures 4.44:1 on --surface-1, just under the 4.5 floor for the
+     places the accent is text rather than a fill. Darkened one step to 4.91:1
+     without leaving the hue. */
+  --accent: #b54e0e;
+  --accent-hover: #a4470d;
+  --accent-fg: #ffffff;
+
+  /* Same four hues, darkened until each clears 4.5:1 on --surface-2. The
+     stream itself never uses these -- it pins data-theme="dark" -- but the
+     status badges that share the vocabulary do, on a light page. */
+  --term-keep: #2f7d46;
+  --term-drop: #6b675c;
+  --term-gap: #b23a32;
+  --term-count: #8a6f12;
+
+  --trace-frame: #6d28d9;
+  --trace-raise: #b45309;
+
+  --syn-keyword: #a626a4;
+  --syn-string: #45803f;
+  --syn-number: #b76b01;
+  --syn-comment: #8e8e87;
+  --syn-function: #3562c4;
+  --syn-class: #9a6700;
+  --syn-decorator: #0184bc;
+  --syn-operator: #0184bc;
+  --syn-variable: #16150f;
+  --syn-invalid: #ca1243;
+}
+
+/* Theme-independent. 15% of the accent, for bar fills and subtle backgrounds:
+   declared once, after both themes, because it resolves against whichever
+   --accent is in scope. */
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --accent-muted: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
 @theme {
   --color-*: initial;
-  --color-base: var(--bf-base);
-  --color-panel: var(--bf-panel);
-  --color-line: var(--bf-line);
-  --color-text: var(--bf-text);
-  --color-dim: var(--bf-dim);
-  --color-error: var(--bf-error);
-  --color-success: var(--bf-success);
-  --color-causal: var(--bf-causal);
-  --color-chrome: var(--bf-chrome);
-  --color-hover: var(--bf-hover);
+
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-muted: var(--accent-muted);
+
+  --color-keep: var(--term-keep);
+  --color-drop: var(--term-drop);
+  --color-gap: var(--term-gap);
+  --color-count: var(--term-count);
+
+  --color-frame: var(--trace-frame);
+  --color-raise: var(--trace-raise);
 
   --font-*: initial;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
+  /* Tailwind's default spacing ramp is already 4px-based, so p-1 p-2 p-3 p-4
+     p-5 p-6 p-8 p-10 p-12 p-16 p-20 spell out exactly the permitted scale
+     (4 8 12 16 20 24 32 40 48 64 80). Anything off it has to be written as an
+     arbitrary value, which makes it reviewable. */
+  --spacing-page: 112px;
+  --spacing-card: 24px;
+
+  /* One radius. The scale is wiped first so there is no `rounded-lg` to reach
+     for; `rounded` is the only one, and it is 4px. */
   --radius-*: initial;
+  --radius: 4px;
+
   --shadow-*: initial;
   --inset-shadow-*: initial;
   --drop-shadow-*: initial;
@@ -127,45 +201,57 @@
  *
  * A custom property is substituted where it is DECLARED, not where it is used:
  * with the aliases living only in @theme (i.e. on :root), the computed value
- * inherits down and a subtree that re-declares --bf-* changes nothing. The
+ * inherits down and a subtree that re-declares the tokens changes nothing. The
  * landing page's stream relies on exactly that -- it is a terminal, and stays
  * dark on a light page -- so the aliases are re-declared here.
  */
 :root,
 [data-theme="dark"],
 [data-theme="light"] {
-  --color-base: var(--bf-base);
-  --color-panel: var(--bf-panel);
-  --color-line: var(--bf-line);
-  --color-text: var(--bf-text);
-  --color-dim: var(--bf-dim);
-  --color-error: var(--bf-error);
-  --color-success: var(--bf-success);
-  --color-causal: var(--bf-causal);
-  --color-chrome: var(--bf-chrome);
-  --color-hover: var(--bf-hover);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-muted: var(--accent-muted);
+  --color-keep: var(--term-keep);
+  --color-drop: var(--term-drop);
+  --color-gap: var(--term-gap);
+  --color-count: var(--term-count);
+  --color-frame: var(--trace-frame);
+  --color-raise: var(--trace-raise);
 }
 
 @layer base {
   html {
-    background: var(--color-base);
+    background: var(--surface-1);
   }
 
   body {
-    background: var(--color-base);
-    color: var(--color-text);
+    background: var(--surface-1);
+    color: var(--text);
     font-family: var(--font-mono);
-    font-size: 13px;
-    line-height: 1.6;
     font-variant-ligatures: none;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+
+    /* body is the default step; anything else opts in to a named step */
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.65;
+    letter-spacing: 0;
   }
 
   *,
   ::before,
   ::after {
-    border-color: var(--color-line);
+    border-color: var(--border);
   }
 
   h1,
@@ -181,18 +267,23 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--color-causal) 40%, transparent);
-    color: var(--color-text);
+    background: color-mix(in srgb, var(--trace-frame) 40%, transparent);
+    color: var(--text);
   }
 
+  /*
+   * Every interactive element gets this unless it opts out to draw its own,
+   * and the ring is the accent at 2px with 2px of offset so it reads on all
+   * three surfaces.
+   */
   :focus-visible {
-    outline: 1px solid var(--color-text);
-    outline-offset: 1px;
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--color-line) transparent;
+    scrollbar-color: var(--border-strong) transparent;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -208,31 +299,81 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+ * type scale
+ *
+ * Six steps, mono only. `display` is the landing H1 and nothing else.
+ * The casing system rides along with the step: `label` is the only one that
+ * uppercases, and it is reserved for eyebrows, table headers and status
+ * badges. Nav, page titles and CTAs are lowercase; prose is sentence case.
+ * ------------------------------------------------------------------------ */
 @layer components {
-  /* small uppercase section label */
+  .t-display {
+    font-size: 44px;
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+  }
+
+  .t-h1 {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+  }
+
+  .t-h2 {
+    font-size: 20px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+
+  .t-body {
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.65;
+    letter-spacing: 0;
+  }
+
+  .t-small {
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: 0;
+  }
+
+  .t-label,
   .label {
     font-size: 11px;
+    font-weight: 500;
     line-height: 1.4;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-dim);
+  }
+
+  /* `.label` additionally carries the muted colour, which is what every
+     existing eyebrow expects; `.t-label` is the bare step. */
+  .label {
+    color: var(--text-muted);
   }
 
   .kbd {
     display: inline-block;
     padding: 0 4px;
-    border: 1px solid var(--color-line);
-    color: var(--color-text);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
     font-size: 11px;
     line-height: 16px;
   }
 
   .link {
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-line);
+    color: var(--text);
+    border-bottom: 1px solid var(--border-strong);
     transition: border-color 120ms linear;
   }
   .link:hover {
-    border-color: var(--color-text);
+    border-color: var(--text);
   }
 }

@@ -17,7 +17,11 @@ const TRACEBACK_FILE = "traceback.txt";
 
 function isHidden(path: string): boolean {
   const parts = path.split("/");
-  return parts[0] === ".git" || parts.includes("__pycache__") || path.endsWith(".pyc");
+  // The union across languages, not a per-language lookup: a challenge tree
+  // contains one language's build detritus and the other's patterns match
+  // nothing, so there is no reason to thread a language in just for this.
+  if (parts[0] === ".git" || parts.includes("__pycache__") || path.endsWith(".pyc")) return true;
+  return parts.includes("vendor") || /\.(test|exe|out)$/.test(path);
 }
 
 function decodeText(data: Uint8Array): string | null {

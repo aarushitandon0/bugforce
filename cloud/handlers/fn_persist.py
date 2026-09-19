@@ -87,7 +87,7 @@ def _persist_one(tree, bucket: str, commit_sha: str, record: dict, now: int) -> 
         "repo": config.repo_name(),
         "repo_url": config.repo_url(),
         "license": config.repo_license(),
-        "language": "Python",
+        "language": config.repo_language_label(),
         "commit_sha": commit_sha,
         "title": record.get("title", ""),
         "description": record.get("description", ""),

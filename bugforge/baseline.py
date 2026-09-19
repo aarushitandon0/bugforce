@@ -131,6 +131,14 @@ def _build_line_to_tests(repo_dir: Path) -> dict[str, list[str]]:
     return line_to_tests
 
 
+# Public aliases. A language adapter that builds its line->tests map some
+# other way (Go runs one coverage profile per test; see languages/go.py) still
+# caches it here, under the same `(repo, commit_sha)` key and in the same
+# directory, so there is one answer to "has this commit been baselined".
+cache_path = _cache_path
+git_head_sha = _git_head_sha
+
+
 def is_cached(repo_dir: Path) -> bool:
     """True if compute_baseline() would hit the cache for this repo at HEAD.
 

@@ -28,14 +28,14 @@ function Histogram({ counts, edges }: { counts: number[]; edges: number[] }) {
     >
       {counts.map((count, i) => (
         <span key={i} className="flex w-[16px] flex-col items-center gap-1" title={`score ${edges[i]}-${edges[i + 1]}: ${count}`}>
-          <span className="text-[9px] leading-none tabular-nums text-dim">{count || ""}</span>
+          <span className="text-[9px] leading-none tabular-nums text-muted">{count || ""}</span>
           <span className="flex h-[44px] w-full items-end border-b border-line">
             <span
               className={count ? "w-full bg-text" : "w-full"}
               style={{ height: count ? `${Math.max(8, (count / max) * 100)}%` : 0 }}
             />
           </span>
-          <span className="text-[9px] leading-none tabular-nums text-dim">{edges[i]}</span>
+          <span className="text-[9px] leading-none tabular-nums text-muted">{edges[i]}</span>
         </span>
       ))}
     </span>
@@ -63,19 +63,19 @@ function GapSummary() {
       </div>
       <div className="px-4 py-4">
         <p className="max-w-[72ch] text-[13px] leading-[1.7] text-text">
-          <span className="text-error">{top.count}</span> of {total} mutations that no test noticed are in one file,{" "}
+          <span className="text-gap">{top.count}</span> of {total} mutations that no test noticed are in one file,{" "}
           <span className="text-text">{top.path}</span>. Every one of them is a line the suite executes but never
           checks the result of.
         </p>
         <ul className="mt-4 space-y-1.5">
           {files.map((file) => (
             <li key={file.path} className="flex items-center gap-3 text-[12px]">
-              <span className="w-[26ch] shrink-0 truncate text-dim" title={file.path}>
+              <span className="w-[26ch] shrink-0 truncate text-muted" title={file.path}>
                 {file.path}
               </span>
               <span className="flex h-[10px] min-w-0 flex-1 items-center">
                 <span
-                  className="block h-[10px] bg-error"
+                  className="block h-[10px] bg-gap"
                   style={{ width: `${(file.count / max) * 100}%` }}
                   aria-hidden
                 />
@@ -84,7 +84,7 @@ function GapSummary() {
             </li>
           ))}
         </ul>
-        <p className="mt-4 text-[11px] text-dim">
+        <p className="mt-4 text-[11px] text-muted">
           counted from the last forge. a gap is a mutation the repo&apos;s own suite ran straight past.
         </p>
       </div>
@@ -111,7 +111,7 @@ export function Repos() {
       {error && <ErrorLine message={error} onRetry={reload} />}
 
       {data && repos.length === 0 && (
-        <p className="text-dim">
+        <p className="text-muted">
           nothing forged yet.{" "}
           <Link href="/" className="link">
             forge a repo →
@@ -121,7 +121,7 @@ export function Repos() {
 
       {data && repos.length > 0 && (
         <>
-          <p className="mb-3 text-[12px] text-dim">
+          <p className="mb-3 text-[12px] text-muted">
             {plural(repos.length, "repo")} · {plural(totalChallenges, "challenge")} · {plural(totalGaps, "test gap")}
           </p>
           <div className="overflow-x-auto">
@@ -144,15 +144,15 @@ export function Repos() {
                   <tr
                     key={repo.repo}
                     onClick={() => router.push(courseHref(repo.repo))}
-                    className="cursor-pointer border-b border-line transition-colors duration-[120ms] hover:bg-panel"
+                    className="cursor-pointer border-b border-line transition-colors duration-[120ms] hover:bg-surface-2"
                   >
                     <td className="px-3 py-3">
                       <Link href={courseHref(repo.repo)} className="font-bold text-text" onClick={(e) => e.stopPropagation()}>
                         {repoDisplay(repo.repo)}
                       </Link>
                     </td>
-                    <td className="px-3 py-3 text-dim">{repo.language.toLowerCase()}</td>
-                    <td className="px-3 py-3 text-dim">{repo.license || "—"}</td>
+                    <td className="px-3 py-3 text-muted">{repo.language.toLowerCase()}</td>
+                    <td className="px-3 py-3 text-muted">{repo.license || "—"}</td>
                     <td className="px-3 py-3 text-right text-text">{repo.challenge_count}</td>
                     <td className="px-3 py-3">
                       <Histogram counts={repo.histogram} edges={data.histogram_edges} />
@@ -162,12 +162,12 @@ export function Repos() {
                       <Link
                         href={`/gaps/?repo=${encodeURIComponent(repo.repo)}`}
                         onClick={(e) => e.stopPropagation()}
-                        className={repo.gap_count ? "link text-error" : "text-dim"}
+                        className={repo.gap_count ? "link text-gap" : "text-muted"}
                       >
                         {repo.gap_count}
                       </Link>
                     </td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap text-dim">
+                    <td className="px-3 py-3 text-right whitespace-nowrap text-muted">
                       learn {repoShort(repo.repo)} in {plural(repo.challenge_count, "bug")} →
                     </td>
                   </tr>
@@ -175,7 +175,7 @@ export function Repos() {
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-[11px] text-dim">
+          <p className="mt-3 text-[11px] text-muted">
             difficulty: challenges per score band, {data.histogram_edges[0]} to{" "}
             {data.histogram_edges[data.histogram_edges.length - 1]}, easiest on the left
           </p>

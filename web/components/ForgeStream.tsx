@@ -6,6 +6,7 @@ import { ApiError, getForge, type ForgeStatus, type StreamRow, type StreamVerdic
 import { REPLAY } from "@/lib/forge-data";
 import { clock, plural, repoDisplay, truncateLeft } from "@/lib/format";
 import { Cursor } from "./Cursor";
+import { Panel } from "./ui/Panel";
 
 /** A line printed before (or instead of) an execution: the command, a refusal, an error. */
 export interface LocalLine {
@@ -16,9 +17,9 @@ export interface LocalLine {
 const TONE: Record<LocalLine["tone"], string> = {
   command: "text-text",
   text: "text-text",
-  dim: "text-dim",
-  error: "text-error",
-  success: "text-success",
+  dim: "text-muted",
+  error: "text-gap",
+  success: "text-keep",
 };
 
 const POLL_MS = 1500;
@@ -146,14 +147,14 @@ function useReplay(enabled: boolean): ForgeStatus | null {
 function Row({ row, locationWidth }: { row: StreamRow; locationWidth: number }) {
   const glyph = row.verdict === "keep" ? "✓" : row.verdict === "scoring" ? "·" : "✗";
   const glyphTone =
-    row.verdict === "keep" ? "text-success" : row.verdict === "gap" ? "text-error" : "text-dim";
-  const body = row.verdict === "drop" || row.verdict === "scoring" ? "text-dim" : "text-text";
+    row.verdict === "keep" ? "text-keep" : row.verdict === "gap" ? "text-gap" : "text-muted";
+  const body = row.verdict === "drop" || row.verdict === "scoring" ? "text-muted" : "text-text";
 
   const tests =
     row.tests_red === null
       ? "  —" + " ".repeat(10)
       : `${String(row.tests_red).padStart(3)} ${row.tests_red === 1 ? "test red " : "tests red"}`;
-  const redTone = row.tests_red && row.verdict !== "drop" ? "text-error" : "";
+  const redTone = row.tests_red && row.verdict !== "drop" ? "text-gap" : "";
 
   return (
     <div className={`whitespace-pre animate-fade ${body}`}>
@@ -164,12 +165,12 @@ function Row({ row, locationWidth }: { row: StreamRow; locationWidth: number }) 
       {"   "}
       {row.verdict === "gap" ? (
         <>
-          test gap <span className="text-error">→ report</span>
+          test gap <span className="text-gap">→ report</span>
         </>
       ) : (
         <>
           {row.detail.padEnd(17)}
-          {row.verdict === "keep" && <span className="font-bold text-success">KEEP</span>}
+          {row.verdict === "keep" && <span className="font-bold text-keep">keep</span>}
           {row.verdict === "drop" && "drop"}
           {row.verdict === "scoring" && "scoring"}
         </>
@@ -180,8 +181,8 @@ function Row({ row, locationWidth }: { row: StreamRow; locationWidth: number }) 
 
 function Step({ done, name, children }: { done: boolean; name: string; children: React.ReactNode }) {
   return (
-    <div className={`whitespace-pre animate-fade ${done ? "text-text" : "text-dim"}`}>
-      <span className={done ? "text-success" : "text-dim"}>{done ? "✓" : "·"}</span> {name.padEnd(9)} {children}
+    <div className={`whitespace-pre animate-fade ${done ? "text-text" : "text-muted"}`}>
+      <span className={done ? "text-keep" : "text-muted"}>{done ? "✓" : "·"}</span> {name.padEnd(9)} {children}
     </div>
   );
 }
@@ -236,12 +237,21 @@ export function ForgeStream({
      * does on a light desktop. Without it every verdict colour in here would be
      * a dark ink on a white card and the page would lose its one anchor.
      */
-    <div
+    <Panel
       data-theme="dark"
-      className="flex h-full min-h-0 flex-col border border-line bg-panel text-text"
-    >
-      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-line px-4 py-2 text-[11px] text-dim">
-        <span className="truncate">
+      className="h-full text-text"
+      padded={false}
+      bodyClassName="overflow-auto p-card"
+      bodyProps={{
+        ref: bodyRef,
+        onScroll,
+        role: "log",
+        "aria-live": "polite",
+        "aria-label": "generation stream",
+      } as React.ComponentProps<"div">}
+      header={
+        <div className="flex w-full items-center justify-between gap-4 t-label text-muted">
+        <span className="truncate normal-case tracking-normal">
           {replaying ? (
             <>
               <span className="text-text">{REPLAY.display}</span>
@@ -272,18 +282,43 @@ export function ForgeStream({
             "idle"
           )}
         </span>
-      </div>
-
-      <div
-        ref={bodyRef}
-        onScroll={onScroll}
-        role="log"
-        aria-live="polite"
-        aria-label="generation stream"
-        className="min-h-[240px] flex-1 overflow-auto px-4 py-3 text-[12.5px] leading-[1.75]"
-      >
+        </div>
+      }
+      footer={
+        status || legend ? (
+          <div className="w-full t-small text-muted">
+            {status && (
+              <div className="flex flex-wrap gap-x-5 tabular-nums">
+                <span>
+                  <span className="text-keep">{status.counts.keep}</span> kept
+                </span>
+                <span>{status.counts.drop} dropped</span>
+                <span>
+                  <span className="text-gap">{status.counts.gap}</span> test gaps
+                </span>
+                {status.counts.scoring > 0 && <span>{status.counts.scoring} scoring</span>}
+              </div>
+            )}
+            {legend && (
+              <dl className={`flex flex-wrap gap-x-5 gap-y-1 ${status ? "mt-3 border-t border-line pt-3" : ""}`}>
+                <div>
+                  <dt className="inline text-keep">&#10003; keep</dt> <dd className="inline">caught by the suite</dd>
+                </div>
+                <div>
+                  <dt className="inline">&#10007; drop</dt> <dd className="inline">too loud, too easy, timed out</dd>
+                </div>
+                <div>
+                  <dt className="inline text-gap">&#10007; test gap</dt> <dd className="inline">no test noticed it</dd>
+                </div>
+              </dl>
+            )}
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="text-[13px] leading-[1.75]">
         {replaying && (
-          <div className="whitespace-pre-wrap text-dim">
+          <div className="whitespace-pre-wrap text-muted">
             $ forge github.com/{REPLAY.display}
           </div>
         )}
@@ -315,22 +350,22 @@ export function ForgeStream({
             ))}
 
             {status.status === "RUNNING" && status.phase === "run" && (
-              <div className="mt-2 whitespace-pre text-dim">
+              <div className="mt-2 whitespace-pre text-muted">
                 · {status.batches_done} of {plural(status.batches, "batch", "batches")} run against their covering tests
               </div>
             )}
             {status.status === "RUNNING" && status.phase === "score" && (
-              <div className="mt-2 whitespace-pre text-dim">
+              <div className="mt-2 whitespace-pre text-muted">
                 · full-suite run for each survivor · {status.counts.scoring} left
               </div>
             )}
             {status.status === "RUNNING" && status.phase === "package" && (
-              <div className="mt-2 whitespace-pre text-dim">· naming, packaging trees, writing the gap report…</div>
+              <div className="mt-2 whitespace-pre text-muted">· naming, packaging trees, writing the gap report…</div>
             )}
 
             {status.status === "SUCCEEDED" && status.summary && (
               <div className="mt-3 animate-fade">
-                <div className="font-bold text-success">
+                <div className="font-bold text-keep">
                   {plural(status.summary.challenges_ready, "challenge")} ready ·{" "}
                   {plural(status.summary.test_gaps, "test gap")} found
                 </div>
@@ -350,7 +385,7 @@ export function ForgeStream({
             )}
 
             {finished && status.status !== "SUCCEEDED" && (
-              <div className="mt-3 whitespace-pre-wrap text-error animate-fade">
+              <div className="mt-3 whitespace-pre-wrap text-gap animate-fade">
                 ✗ forge {status.status.toLowerCase().replace("_", " ")}
                 {status.error && ` · ${status.error}`}
                 {status.cause && `\n  ${status.cause.slice(0, 400)}`}
@@ -360,7 +395,7 @@ export function ForgeStream({
         )}
 
         {problem && (
-          <div className={`whitespace-pre-wrap ${problem.fatal ? "text-error" : "text-dim"}`}>
+          <div className={`whitespace-pre-wrap ${problem.fatal ? "text-gap" : "text-muted"}`}>
             {problem.fatal ? "✗ " : "· "}
             {problem.message}
           </div>
@@ -373,39 +408,6 @@ export function ForgeStream({
           </div>
         )}
       </div>
-
-      {(status || legend) && (
-        <div className="shrink-0 border-t border-line px-4 py-2 text-[11px] text-dim">
-          {status && (
-            <div className="flex flex-wrap gap-x-5 tabular-nums">
-              <span>
-                <span className="text-success">{status.counts.keep}</span> kept
-              </span>
-              <span>{status.counts.drop} dropped</span>
-              <span>
-                <span className="text-error">{status.counts.gap}</span> test gaps
-              </span>
-              {status.counts.scoring > 0 && <span>{status.counts.scoring} scoring</span>}
-            </div>
-          )}
-          {legend && (
-            <dl className={`flex flex-wrap gap-x-5 gap-y-0.5 ${status ? "mt-1.5 border-t border-line pt-1.5" : ""}`}>
-              <div>
-                <dt className="inline text-success">&#10003; keep</dt>{" "}
-                <dd className="inline">caught by the suite</dd>
-              </div>
-              <div>
-                <dt className="inline">&#10007; drop</dt>{" "}
-                <dd className="inline">too loud, too easy, timed out</dd>
-              </div>
-              <div>
-                <dt className="inline text-error">&#10007; test gap</dt>{" "}
-                <dd className="inline">no test noticed it</dd>
-              </div>
-            </dl>
-          )}
-        </div>
-      )}
-    </div>
+    </Panel>
   );
 }

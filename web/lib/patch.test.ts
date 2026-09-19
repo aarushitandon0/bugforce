@@ -91,7 +91,26 @@ describe("path rules mirror cloud/anti_cheat.py", () => {
   it("explains the first problem it finds", () => {
     expect(pathProblem([])).toBe("no files changed");
     expect(pathProblem(["tenacity/stop.py", "tests/test_stop.py"])).toBe("patch modifies a test file: tests/test_stop.py");
-    expect(pathProblem(["pyproject.toml"])).toBe("patch modifies a non-Python file: pyproject.toml");
+    expect(pathProblem(["pyproject.toml"])).toBe("patch modifies a file that is not Python source: pyproject.toml");
     expect(pathProblem(["tenacity/stop.py"])).toBeNull();
+  });
+
+  it("judges a Go challenge by Go's rules", () => {
+    expect(pathProblem(["parser.go"], "Go")).toBeNull();
+    expect(pathProblem(["request/oauth2.go"], "Go")).toBeNull();
+    expect(pathProblem(["parser_test.go"], "Go")).toBe("patch modifies a test file: parser_test.go");
+    expect(pathProblem(["testdata/fixture.go"], "Go")).toBe("patch modifies a test file: testdata/fixture.go");
+    expect(pathProblem(["go.mod"], "Go")).toBe("patch modifies a file that is not Go source: go.mod");
+    // ...and a .py file is wrong in a Go challenge, not merely unusual.
+    expect(pathProblem(["setup.py"], "Go")).toBe("patch modifies a file that is not Go source: setup.py");
+  });
+
+  it("keeps Python's rules unchanged when no language is given", () => {
+    // Every challenge minted before the language field existed comes through
+    // this path, so the default has to stay Python.
+    expect(pathProblem(["tenacity/stop.py"])).toBeNull();
+    expect(pathProblem(["parser.go"])).toBe("patch modifies a file that is not Python source: parser.go");
+    expect(isTestPath("pkg/stop_test.go", "Go")).toBe(true);
+    expect(isTestPath("pkg/stop_test.go")).toBe(false);
   });
 });

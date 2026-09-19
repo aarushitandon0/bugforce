@@ -5,6 +5,11 @@ mutated file.
 
 Usage:
     python scripts/demo_mutate.py <repo_dir> <package_name> [--count N]
+    python scripts/demo_mutate.py <repo_dir> <module_path> --language go
+
+`package_name` is the import package for Python ("tenacity") and the go.mod
+module path for Go ("github.com/golang-jwt/jwt/v5") -- the adapter decides
+what it means, via source_root().
 """
 from __future__ import annotations
 
@@ -12,11 +17,7 @@ import argparse
 import difflib
 from pathlib import Path
 
-from bugforge.languages import get_adapter
-
-
-# Python is the only registered adapter today; see bugforge/languages/.
-adapter = get_adapter()
+from bugforge.languages import DEFAULT_LANGUAGE, available_languages, get_adapter
 
 
 def main() -> None:
@@ -24,13 +25,15 @@ def main() -> None:
     parser.add_argument("repo_dir", type=Path)
     parser.add_argument("package")
     parser.add_argument("--count", type=int, default=20)
+    parser.add_argument("--language", default=DEFAULT_LANGUAGE, choices=available_languages())
     args = parser.parse_args()
 
-    pkg_dir = args.repo_dir / args.package
+    adapter = get_adapter(args.language)
+    root = adapter.source_root(args.repo_dir, args.package)
     all_sites = []  # (rel_path, source, site)
-    for py_file in adapter.discover_sources(pkg_dir):
-        rel = str(py_file.relative_to(args.repo_dir)).replace("\\", "/")
-        source = py_file.read_text(encoding="utf-8")
+    for source_file in adapter.discover_sources(root):
+        rel = str(source_file.relative_to(args.repo_dir)).replace("\\", "/")
+        source = source_file.read_text(encoding="utf-8")
         try:
             sites = adapter.find_candidates(source, rel)
         except SyntaxError:

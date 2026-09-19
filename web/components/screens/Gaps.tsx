@@ -86,7 +86,7 @@ function RepoReport({ repo, gaps }: { repo: string; gaps: Gap[] }) {
       <div className="flex flex-wrap items-baseline justify-between gap-4 border-b border-line pb-2">
         <h2 id={`report-${repo}`} className="font-bold text-text">
           {repoDisplay(repo)}
-          <span className="font-normal text-dim">
+          <span className="font-normal text-muted">
             {" "}
             @ {gaps[0]?.commit_sha.slice(0, 10)} · {plural(gaps.length, "untested mutation")} in {plural(byFile.size, "file")}
           </span>
@@ -111,26 +111,26 @@ function RepoReport({ repo, gaps }: { repo: string; gaps: Gap[] }) {
       {[...byFile.entries()].map(([file, fileGaps]) => (
         <div key={file} className="mt-6">
           <h3 className="text-text">
-            {file} <span className="text-dim">· {fileGaps.length}</span>
+            {file} <span className="text-muted">· {fileGaps.length}</span>
           </h3>
           <ol className="mt-1">
             {fileGaps.map((gap) => (
               <li key={gap.gap_id} className="grid grid-cols-[72px_1fr] gap-x-4 border-t border-line py-3 first:border-t-0">
-                <a href={lineUrl(gap)} target="_blank" rel="noreferrer" className="text-dim hover:text-text" title="open this line on GitHub">
+                <a href={lineUrl(gap)} target="_blank" rel="noreferrer" className="text-muted hover:text-text" title="open this line on GitHub">
                   L{gap.lineno}
                 </a>
                 <div className="min-w-0">
                   <p className="break-words text-text">
                     {token(gap.original_token)} → {token(gap.mutated_token)}
-                    <span className="text-dim">
+                    <span className="text-muted">
                       {" "}
                       · {OPERATOR_NAMES[gap.operator] ?? gap.operator}
                       {gap.enclosing_function && <> · in {gap.enclosing_function}()</>}
                     </span>
                   </p>
-                  <p className="text-dim">{coverage(gap)}</p>
+                  <p className="text-muted">{coverage(gap)}</p>
                   <p className="mt-1 max-w-[80ch] text-text">
-                    <span className="text-dim">why it matters: </span>
+                    <span className="text-muted">why it matters: </span>
                     {whyItMatters(gap)}
                   </p>
                 </div>
@@ -161,7 +161,7 @@ export function Gaps() {
       </PageHeader>
 
       {repoNames.length > 1 && (
-        <p className="flex flex-wrap gap-x-5 text-[12px] text-dim">
+        <p className="flex flex-wrap gap-x-5 text-[12px] text-muted">
           <Link href="/gaps/" className={repo ? "hover:text-text" : "text-text"}>
             all repos
           </Link>
@@ -176,7 +176,7 @@ export function Gaps() {
       {gaps.loading && <Loading text="loading the report" />}
       {gaps.error && <ErrorLine message={gaps.error} onRetry={gaps.reload} />}
       {gaps.data && gaps.data.count === 0 && (
-        <p className="text-dim">no test gaps recorded{repo ? ` for ${repoDisplay(repo)}` : ""}.</p>
+        <p className="text-muted">no test gaps recorded{repo ? ` for ${repoDisplay(repo)}` : ""}.</p>
       )}
       {[...byRepo.entries()].map(([name, list]) => (
         <RepoReport key={name} repo={name} gaps={list} />

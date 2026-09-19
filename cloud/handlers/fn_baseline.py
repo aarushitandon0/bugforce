@@ -8,9 +8,14 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 
-from bugforge.baseline import compute_baseline
-
 from cloud import config, s3_io, workspace
+
+# Per `go test` / `pytest` invocation, not for the step as a whole. The Go
+# adapter runs one coverage profile per test, so the step's total is this
+# times the test count -- which is why BaselineFunction gets Lambda's maximum
+# 900s timeout in the template, and why a repo is only vettable if its whole
+# per-test pass fits inside that.
+BASELINE_TIMEOUT_S = 240
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
@@ -32,9 +37,10 @@ def handler(event: dict, context) -> dict:
         )
 
     tree = workspace.repo_tree(config.repo_dir())
-    baseline = compute_baseline(
-        tree, config.repo_package(), workspace.python_exe(), use_cache=False
-    )
+    # use_cache=False: the image pins one commit, so a cache hit could only
+    # ever come from a previous invocation in this same container, and a stale
+    # map is worse than a slow one.
+    baseline = workspace.adapter().baseline(tree, workspace.runner_config(BASELINE_TIMEOUT_S))
 
     key = s3_io.put_json(config.bucket(), config.baseline_key(execution_id), asdict(baseline))
     log.info(

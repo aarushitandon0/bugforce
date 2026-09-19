@@ -23,25 +23,44 @@ if [[ -z "${REPO_KEY}" ]]; then
   exit 1
 fi
 
-read -r REPO_URL REPO_SHA REPO_PACKAGE REPO_EXTRAS < <(
+read -r REPO_URL REPO_SHA REPO_PACKAGE REPO_EXTRAS REPO_LANGUAGE REPO_LICENSE < <(
   python - "${VETTED}" "${REPO_KEY}" <<'PY'
 import json, sys
 vetted, key = sys.argv[1], sys.argv[2]
 for repo in json.load(open(vetted))["repos"]:
     if repo["name"] == key:
-        print(repo["url"], repo["sha"], repo["package"], repo.get("extras", "test"))
+        # Fields are positional and must never be empty: an empty one would
+        # shift every field after it in the shell's `read`. "-" stands in for
+        # a value the entry does not set, and each Dockerfile ignores it.
+        print(
+            repo["url"],
+            repo["sha"],
+            repo["package"],
+            repo.get("extras") or "-",
+            repo.get("language", "python"),
+            repo.get("license") or "-",
+        )
         break
 else:
     sys.exit(f"{key} is not in the vetted repo list; refusing to build")
 PY
 )
 
+# One Dockerfile per language: a Go repo's image carries a Go toolchain and a
+# Python repo's does not, and that is the same choice as which LanguageAdapter
+# runs inside it (see bugforge/languages/).
+case "${REPO_LANGUAGE}" in
+  python) DOCKERFILE="${HERE}/Dockerfile" ;;
+  go)     DOCKERFILE="${HERE}/Dockerfile.go" ;;
+  *)      echo "no Dockerfile for language '${REPO_LANGUAGE}'" >&2; exit 1 ;;
+esac
+
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 REGISTRY="${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com"
 TAG="${REPO_KEY}-${REPO_SHA:0:10}"
 IMAGE="${REGISTRY}/${ECR_REPO}:${TAG}"
 
-echo "==> ${REPO_KEY} @ ${REPO_SHA:0:10} (${REPO_PACKAGE}) -> ${IMAGE}"
+echo "==> ${REPO_KEY} @ ${REPO_SHA:0:10} (${REPO_LANGUAGE}, ${REPO_PACKAGE}) -> ${IMAGE}"
 
 aws ecr describe-repositories --repository-names "${ECR_REPO}" --region "${REGION}" >/dev/null 2>&1 \
   || aws ecr create-repository \
@@ -61,7 +80,7 @@ docker build \
   --build-arg "REPO_SHA=${REPO_SHA}" \
   --build-arg "REPO_PACKAGE=${REPO_PACKAGE}" \
   --build-arg "REPO_EXTRAS=${REPO_EXTRAS}" \
-  -f "${HERE}/Dockerfile" \
+  -f "${DOCKERFILE}" \
   -t "${IMAGE}" \
   "${ROOT}"
 
@@ -74,4 +93,11 @@ echo "deploy with:"
 echo "  sam deploy --template infra/template.yaml --stack-name bugforge \\"
 echo "    --capabilities CAPABILITY_IAM --region ${REGION} --resolve-s3 \\"
 echo "    --parameter-overrides ImageUri=${IMAGE} RepoName=${REPO_KEY} \\"
-echo "      RepoUrl=${REPO_URL} RepoPackage=${REPO_PACKAGE}"
+echo "      RepoUrl=${REPO_URL} RepoPackage=${REPO_PACKAGE} RepoLicense=${REPO_LICENSE}"
+echo
+# Deliberately not a stack parameter. The language is a property of the image
+# -- a Go image has a Go toolchain in it and a Python image does not -- so it
+# is baked in as REPO_LANGUAGE at build time. A parameter here could disagree
+# with the image it is pointed at, and the failure would surface as every
+# mutation being unparseable rather than as a deployment error.
+echo "(language '${REPO_LANGUAGE}' is baked into the image, not a stack parameter)"

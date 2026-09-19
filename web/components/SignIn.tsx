@@ -51,14 +51,14 @@ export function SignIn() {
     return (
       <div className="flex items-center gap-3">
         {error && (
-          <span className="hidden text-[11px] text-error sm:inline" role="alert">
+          <span className="hidden text-[11px] text-gap sm:inline" role="alert">
             {error}
           </span>
         )}
         <button
           type="button"
           onClick={signIn}
-          className="flex items-center gap-1.5 border border-line px-2 py-0.5 text-dim outline-none transition-colors duration-[120ms] hover:border-text hover:text-text focus-visible:border-text focus-visible:text-text"
+          className="flex items-center gap-1.5 border border-line px-2 py-0.5 text-muted outline-none transition-colors duration-[120ms] hover:border-text hover:text-text focus-visible:border-text focus-visible:text-text"
         >
           <GithubMark />
           sign in
@@ -80,7 +80,7 @@ export function SignIn() {
         onClick={signOut}
         title="sign out"
         aria-label="sign out"
-        className="flex h-6 w-6 items-center justify-center text-dim outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
+        className="flex h-6 w-6 items-center justify-center text-muted outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
       >
         <LogOut size={14} strokeWidth={1.5} />
       </button>
@@ -96,8 +96,8 @@ export function SignIn() {
 export function SignInToSubmit({ className = "" }: { className?: string }) {
   const { signIn } = useSession();
   return (
-    <div className={`border border-line bg-panel p-3 ${className}`}>
-      <p className="text-dim">
+    <div className={`border border-line bg-surface-2 p-3 ${className}`}>
+      <p className="text-muted">
         Grading runs the repo&apos;s suite against your patch and records the solve. Sign in with
         GitHub so it is yours — your progress then follows you between devices.
       </p>

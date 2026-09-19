@@ -17,7 +17,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
   const pathname = usePathname() ?? "/";
   return (
     <header className="border-b border-line">
-      <div className={`mx-auto flex h-11 items-center justify-between px-6 ${wide ? "max-w-[1400px]" : "max-w-[1120px]"}`}>
+      <div className={`mx-auto flex h-12 items-center justify-between gap-6 px-5 lg:px-page ${wide ? "max-w-[1400px]" : "max-w-[1120px]"}`}>
         <Link href="/" className="flex items-center gap-2 font-bold tracking-tight text-text">
           <Cursor className="!animate-none" />
           bugforge
@@ -32,7 +32,7 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={`border-b py-0.5 transition-colors duration-[120ms] ${
-                  active ? "border-text text-text" : "border-transparent text-dim hover:text-text"
+                  active ? "border-text text-text" : "border-transparent text-muted hover:text-text"
                 }`}
               >
                 {item.label}
@@ -45,8 +45,8 @@ export function SiteHeader({ wide = false }: { wide?: boolean }) {
         </div>
       </div>
       {!apiConfigured && (
-        <div className="border-t border-line bg-panel">
-          <p className={`mx-auto px-6 py-1.5 text-error ${wide ? "max-w-[1400px]" : "max-w-[1120px]"}`}>
+        <div className="border-t border-line bg-surface-2">
+          <p className={`mx-auto px-5 py-2 t-small text-gap lg:px-page ${wide ? "max-w-[1400px]" : "max-w-[1120px]"}`}>
             ! NEXT_PUBLIC_API_URL was not set when this site was built. Nothing can load.
           </p>
         </div>
@@ -64,9 +64,9 @@ export function Shell({ children, wide = false }: { children: React.ReactNode; w
   return (
     <div className="flex min-h-dvh flex-col">
       <SiteHeader wide={wide} />
-      <main className={`mx-auto w-full flex-1 px-6 ${width} ${wide ? "pb-10" : "pb-24"}`}>{children}</main>
+      <main className={`mx-auto w-full flex-1 px-5 lg:px-page ${width} ${wide ? "pb-10" : "pb-20"}`}>{children}</main>
       <footer className="border-t border-line">
-        <p className={`mx-auto px-6 py-3 text-[11px] text-dim ${width}`}>
+        <p className={`mx-auto px-5 py-4 t-small text-muted lg:px-page ${width}`}>
           mutations by AST · grading by each repo&apos;s own test suite · nothing here was written by hand
         </p>
       </footer>

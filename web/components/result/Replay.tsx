@@ -98,7 +98,7 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
     <section className="mt-16 border-t border-line pt-8" aria-label="investigation replay">
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2">
         <h2 className="label">where you looked · where it was</h2>
-        <p className="flex items-center gap-4 text-[11px] text-dim">
+        <p className="flex items-center gap-4 text-[11px] text-muted">
           <span className="flex items-center gap-1.5">
             <svg width="16" height="8" aria-hidden>
               <line x1="0" y1="4" x2="16" y2="4" stroke="var(--color-text)" strokeWidth="1.5" />
@@ -237,7 +237,7 @@ export function Replay({ visits, frames, mutatedPath, displacement, startedAt, e
 
       <p className="mt-5 max-w-[80ch] text-[14px] leading-[1.7] text-text">{sentence}</p>
       {segments.length > 0 && (
-        <p className="mt-2 text-[11px] text-dim">
+        <p className="mt-2 text-[11px] text-muted">
           {segments.length} file {segments.length === 1 ? "opening" : "openings"} across {ranking.length}{" "}
           {ranking.length === 1 ? "file" : "files"} · logged in your browser and sent with the submission
         </p>

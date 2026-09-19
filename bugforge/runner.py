@@ -20,6 +20,27 @@ from bugforge.models import MutationSite
 
 DEFAULT_TIMEOUT_S = 30
 
+# Build and test detritus that must never be copied into a mutated tree. The
+# union across languages rather than one list per language: a pattern that
+# matches nothing in a Python repo costs nothing, and a single list means
+# there is one place to look when a stale artifact survives a copy.
+BUILD_ARTIFACTS = (
+    ".coverage",
+    ".pytest_cache",
+    "__pycache__",
+    "*.pyc",
+    # Go: compiled test binaries and coverage profiles land beside the source.
+    "*.test",
+    "*.exe",
+    "*.out",
+)
+
+# Mutated trees get a fresh history at package time, so .git is dead weight
+# here. cloud/workspace.py copies the repo WITH .git, because compute_baseline
+# reads HEAD to pin the commit sha -- which is why the two lists are named
+# separately instead of one being a slice of the other.
+COPY_IGNORE = (".git", *BUILD_ARTIFACTS)
+
 _FAILED_RE = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.MULTILINE)
 _PASSED_COUNT_RE = re.compile(r"(\d+) passed")
 _FAILED_COUNT_RE = re.compile(r"(\d+) failed")
@@ -103,7 +124,7 @@ def materialize_mutated_tree(repo_dir: Path, dest_dir: Path, site: MutationSite,
     shutil.copytree(
         repo_dir,
         dest_dir,
-        ignore=shutil.ignore_patterns(".git", ".coverage", ".pytest_cache", "__pycache__", "*.pyc"),
+        ignore=shutil.ignore_patterns(*COPY_IGNORE),
     )
     target = dest_dir / site.path
     target.write_text(mutated_source, encoding="utf-8")
@@ -124,3 +145,28 @@ def run_mutation(
         tree_dir = Path(tmp) / "tree"
         materialize_mutated_tree(repo_dir, tree_dir, site, mutated_source)
         return run_pytest(tree_dir, python, test_ids, timeout)
+
+
+def run_mutation_with(
+    adapter,
+    repo_dir: Path,
+    site: MutationSite,
+    mutated_source: str,
+    test_ids: list[str] | None,
+    runner,
+) -> RunResult:
+    """run_mutation(), but the adapter decides what "run the tests" means.
+
+    Identical in shape to run_mutation: materialize the mutation onto a fresh
+    copy of repo_dir, run `test_ids` (or the full suite if falsy) against it,
+    discard the copy. The difference is that the command is the language's,
+    not pytest's, so a Go repo compiles and runs `go test` here while a Python
+    repo runs exactly what it ran before.
+
+    `runner` is a RunnerConfig; it carries the timeout, so unlike run_mutation
+    there is no separate timeout argument to disagree with it.
+    """
+    with tempfile.TemporaryDirectory(prefix="bugforge-mutation-") as tmp:
+        tree_dir = Path(tmp) / "tree"
+        materialize_mutated_tree(repo_dir, tree_dir, site, mutated_source)
+        return adapter.run_tests(tree_dir, test_ids, runner)

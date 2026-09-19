@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
+// The four weights the type scale names, and no others.
 import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/600.css";
 import "@fontsource/jetbrains-mono/700.css";
 import "./globals.css";
 import { THEME_BOOT } from "@/lib/theme-boot";
@@ -11,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0A0B0D",
+  themeColor: "#0D0D0F",
   colorScheme: "dark light",
 };
 

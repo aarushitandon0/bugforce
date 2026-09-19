@@ -29,7 +29,7 @@ export function ActivityBar({
   return (
     <nav
       aria-label="panels"
-      className="flex w-12 shrink-0 flex-row items-center gap-1 border-b border-line bg-chrome px-1 lg:h-full lg:flex-col lg:items-stretch lg:border-r lg:border-b-0 lg:px-0 lg:py-1"
+      className="flex w-12 shrink-0 flex-row items-center gap-1 border-b border-line bg-surface-2 px-1 lg:h-full lg:flex-col lg:items-stretch lg:border-r lg:border-b-0 lg:px-0 lg:py-1"
     >
       {PANELS.map(({ id, label, Icon }) => {
         const isActive = active === id;
@@ -43,12 +43,12 @@ export function ActivityBar({
             aria-label={label}
             aria-pressed={isActive}
             className={`relative flex h-11 w-12 shrink-0 items-center justify-center border-l-2 outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text ${
-              isActive ? "border-causal bg-panel text-text" : "border-transparent text-dim"
+              isActive ? "border-frame bg-surface-2 text-text" : "border-transparent text-muted"
             }`}
           >
             <Icon size={18} strokeWidth={1.5} />
             {badge !== undefined && badge > 0 && (
-              <span className="absolute right-[7px] bottom-[6px] text-[9px] leading-none tabular-nums text-error">
+              <span className="absolute right-[7px] bottom-[6px] text-[9px] leading-none tabular-nums text-gap">
                 {badge > 99 ? "99+" : badge}
               </span>
             )}

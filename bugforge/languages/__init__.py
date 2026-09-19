@@ -1,16 +1,18 @@
 """Language adapter registry.
 
-One entry today. A second language is a new module here plus one line in
-`_ADAPTERS` -- everything upstream asks for an adapter by name and never
-imports a language-specific module.
+A language is a new module here plus one line in `_ADAPTERS` -- everything
+upstream asks for an adapter by name and never imports a language-specific
+module.
 """
 from __future__ import annotations
 
 from bugforge.languages.base import LanguageAdapter, UnsupportedLanguageError
+from bugforge.languages.go import GoAdapter
 from bugforge.languages.python import PythonAdapter
 
 _ADAPTERS: dict[str, LanguageAdapter] = {
     PythonAdapter.name: PythonAdapter(),
+    GoAdapter.name: GoAdapter(),
 }
 
 DEFAULT_LANGUAGE = PythonAdapter.name
@@ -31,6 +33,7 @@ def available_languages() -> list[str]:
 
 __all__ = [
     "DEFAULT_LANGUAGE",
+    "GoAdapter",
     "LanguageAdapter",
     "PythonAdapter",
     "UnsupportedLanguageError",

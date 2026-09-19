@@ -62,17 +62,17 @@ export function Course() {
                     aria-pressed={filter === f}
                     onClick={() => setFilter(f)}
                     className={`border-b py-0.5 transition-colors duration-[120ms] ${
-                      filter === f ? "border-text text-text" : "border-transparent text-dim hover:text-text"
+                      filter === f ? "border-text text-text" : "border-transparent text-muted hover:text-text"
                     }`}
                   >
-                    {f} <span className="text-dim">{count}</span>
+                    {f} <span className="text-muted">{count}</span>
                   </button>
                 );
               })}
             </div>
-            <div className="flex gap-5 text-dim">
+            <div className="flex gap-5 text-muted">
               <span className="tabular-nums">
-                <span className={solvedCount ? "text-success" : ""}>{solvedCount}</span> of {list.length} solved
+                <span className={solvedCount ? "text-keep" : ""}>{solvedCount}</span> of {list.length} solved
               </span>
               {meta?.license && <span>{meta.license}</span>}
               {meta && meta.gap_count > 0 && (
@@ -83,7 +83,7 @@ export function Course() {
             </div>
           </div>
 
-          {list.length === 0 && <p className="py-6 text-dim">no challenges for {repoDisplay(repo)} yet.</p>}
+          {list.length === 0 && <p className="py-6 text-muted">no challenges for {repoDisplay(repo)} yet.</p>}
 
           <ol className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             {shown.map((card) => (

@@ -21,11 +21,12 @@ from __future__ import annotations
 import re
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from bugforge.models import Baseline, MutationSite
-from bugforge.runner import RunResult, run_mutation
+from bugforge.models import RunnerConfig
+from bugforge.runner import RunResult, run_mutation_with
 
 TIMEOUT_S = 30
 TOO_LOUD_FRACTION = 0.25
@@ -98,7 +99,7 @@ def _build_test_to_files(baseline: Baseline) -> dict[str, set[str]]:
     return test_to_files
 
 
-def _extract_traceback_frames(full_output: str, test_node_id: str) -> tuple[list[tuple[str, int, str]], str]:
+def extract_pytest_failure(full_output: str, test_node_id: str) -> tuple[list[tuple[str, int, str]], str]:
     """Returns (ordered frame list, raw traceback text) for one failing test.
 
     Frames are (file, lineno, function), in call order (outermost first,
@@ -152,6 +153,7 @@ def _name_leak(test_id: str, enclosing_function_name: str | None) -> bool:
 
 
 def score_candidate(
+    adapter,
     mutated_file: str,
     site: MutationSite,
     representative_test: str,
@@ -160,7 +162,7 @@ def score_candidate(
     total_tests: int,
     test_to_files: dict[str, set[str]],
 ) -> ScoreBreakdown:
-    frames, _ = _extract_traceback_frames(full_output, representative_test)
+    frames, _ = adapter.extract_failure(full_output, representative_test)
     displacement = _displacement(mutated_file, frames)
 
     search_space = len(test_to_files.get(representative_test, set()))
@@ -188,14 +190,15 @@ def score_candidate(
 
 def classify_candidate(
     repo_dir: Path,
-    python: str,
+    adapter,
+    runner: RunnerConfig,
     baseline: Baseline,
     site: MutationSite,
     mutated_source: str,
     test_to_files: dict[str, set[str]],
     timeout: int = TIMEOUT_S,
 ) -> ClassificationResult:
-    """Classifies one candidate and records how long its pytest runs took.
+    """Classifies one candidate and records how long its test runs took.
 
     The timing is stamped on the way out rather than at each return, because
     there are six ways a candidate can be rejected and every one of them still
@@ -203,7 +206,7 @@ def classify_candidate(
     """
     timing: dict[str, float | bool] = {"targeted": 0.0, "full": 0.0, "ran_full": False}
     result = _classify_candidate(
-        repo_dir, python, baseline, site, mutated_source, test_to_files, timeout, timing
+        repo_dir, adapter, runner, baseline, site, mutated_source, test_to_files, timeout, timing
     )
     result.targeted_seconds = float(timing["targeted"])
     result.full_suite_seconds = float(timing["full"])
@@ -213,7 +216,8 @@ def classify_candidate(
 
 def _classify_candidate(
     repo_dir: Path,
-    python: str,
+    adapter,
+    runner: RunnerConfig,
     baseline: Baseline,
     site: MutationSite,
     mutated_source: str,
@@ -229,7 +233,9 @@ def _classify_candidate(
         )
 
     _t0 = time.perf_counter()
-    targeted = run_mutation(repo_dir, python, site, mutated_source, covering_tests, timeout=timeout)
+    targeted = run_mutation_with(
+        adapter, repo_dir, site, mutated_source, covering_tests, replace(runner, timeout_s=timeout)
+    )
     timing["targeted"] = time.perf_counter() - _t0
 
     if targeted.timed_out:
@@ -254,7 +260,9 @@ def _classify_candidate(
     # tentative CANDIDATE -- confirm with a full-suite run for accurate
     # failing/total counts and a clean traceback.
     _t0 = time.perf_counter()
-    full = run_mutation(repo_dir, python, site, mutated_source, test_ids=None, timeout=timeout)
+    full = run_mutation_with(
+        adapter, repo_dir, site, mutated_source, None, replace(runner, timeout_s=timeout)
+    )
     timing["full"] = time.perf_counter() - _t0
     timing["ran_full"] = True
 
@@ -303,6 +311,7 @@ def _classify_candidate(
     # mutation's effect surfaced through a different test on the full run).
     representative_test = covering_and_failing[0] if covering_and_failing else failing_tests[0]
     breakdown = score_candidate(
+        adapter,
         site.path,
         site,
         representative_test,
@@ -311,7 +320,9 @@ def _classify_candidate(
         total_tests,
         test_to_files,
     )
-    _, traceback_text = _extract_traceback_frames(full.stdout + "\n" + full.stderr, representative_test)
+    _, traceback_text = adapter.extract_failure(
+        full.stdout + "\n" + full.stderr, representative_test
+    )
 
     outcome = Outcome.ADMITTED if breakdown.score >= ADMIT_THRESHOLD else Outcome.DROP_LOW_SCORE
     reason = "" if outcome == Outcome.ADMITTED else f"score {breakdown.score:.2f} < {ADMIT_THRESHOLD}"
@@ -331,7 +342,8 @@ def _classify_candidate(
 
 def run_selection(
     repo_dir: Path,
-    python: str,
+    adapter,
+    runner: RunnerConfig,
     baseline: Baseline,
     sites_and_sources: list[tuple[MutationSite, str]],
     timeout: int = TIMEOUT_S,
@@ -341,7 +353,9 @@ def run_selection(
     results = []
     taxonomy: Counter = Counter()
     for site, mutated_source in sites_and_sources:
-        result = classify_candidate(repo_dir, python, baseline, site, mutated_source, test_to_files, timeout)
+        result = classify_candidate(
+            repo_dir, adapter, runner, baseline, site, mutated_source, test_to_files, timeout
+        )
         results.append(result)
         taxonomy[result.outcome] += 1
     return results, taxonomy

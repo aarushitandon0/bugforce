@@ -22,7 +22,7 @@ export function Breadcrumbs({
   onReveal: (path: string) => void;
 }) {
   if (!path) {
-    return <span className="truncate text-dim">no file open</span>;
+    return <span className="truncate text-muted">no file open</span>;
   }
   const parts = path.split("/");
   const dirs = parts.slice(0, -1);
@@ -35,7 +35,7 @@ export function Breadcrumbs({
           <button
             type="button"
             onClick={() => onReveal(parts.slice(0, i + 1).join("/"))}
-            className="text-dim outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
+            className="text-muted outline-none transition-colors duration-[120ms] hover:text-text focus-visible:text-text"
           >
             {dir}
           </button>
@@ -46,7 +46,7 @@ export function Breadcrumbs({
         type="button"
         onClick={() => onReveal(path)}
         title={`reveal ${path} in the tree`}
-        className="flex min-w-0 shrink items-center gap-1.5 text-text outline-none transition-colors duration-[120ms] hover:text-causal focus-visible:text-causal"
+        className="flex min-w-0 shrink items-center gap-1.5 text-text outline-none transition-colors duration-[120ms] hover:text-frame focus-visible:text-frame"
       >
         <FileIcon name={name} size={12} />
         <span className="truncate">{name}</span>
@@ -54,7 +54,7 @@ export function Breadcrumbs({
       {scope.map((segment, i) => (
         <span key={i} className="flex shrink-0 items-center gap-0.5">
           <Separator />
-          <span className={i === scope.length - 1 ? "text-text" : "text-dim"}>{segment}</span>
+          <span className={i === scope.length - 1 ? "text-text" : "text-muted"}>{segment}</span>
         </span>
       ))}
     </nav>
@@ -63,7 +63,7 @@ export function Breadcrumbs({
 
 function Separator() {
   return (
-    <span aria-hidden className="flex shrink-0 items-center text-dim opacity-60">
+    <span aria-hidden className="flex shrink-0 items-center text-muted opacity-60">
       <ChevronRight size={12} strokeWidth={1.5} />
     </span>
   );

@@ -11,6 +11,7 @@ export interface VettedRepo {
   display: string;
   url: string;
   sha: string;
+  language: string;
 }
 
 export interface ForgeData {
@@ -35,7 +36,15 @@ const DATA: ForgeData = {
       "repo": "jd__tenacity",
       "display": "jd/tenacity",
       "url": "https://github.com/jd/tenacity",
-      "sha": "3e58094d3b"
+      "sha": "3e58094d3b",
+      "language": "python"
+    },
+    {
+      "repo": "golang-jwt__jwt",
+      "display": "golang-jwt/jwt",
+      "url": "https://github.com/golang-jwt/jwt",
+      "sha": "e9547a11aa",
+      "language": "go"
     }
   ],
   "headline": {

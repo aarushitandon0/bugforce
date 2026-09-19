@@ -521,7 +521,11 @@ Resources:
       ImageConfig:
         Command: [cloud.handlers.fn_baseline.handler]
       Role: !GetAtt PipelineRole.Arn
-      Timeout: 300
+      # Lambda's maximum. Python gets its line->tests map free from coverage
+      # contexts in a single suite run; the Go adapter has no equivalent and
+      # runs one coverage profile per test, so this step is the only one in
+      # the pipeline that can legitimately need the full 15 minutes.
+      Timeout: 900
       EphemeralStorage: {Size: 2048}
 
   GenerateFunction:

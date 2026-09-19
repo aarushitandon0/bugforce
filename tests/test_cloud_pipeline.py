@@ -81,6 +81,9 @@ def tree(tmp_path, monkeypatch):
     monkeypatch.setattr(fn_generate.workspace, "repo_tree", lambda _: root)
     monkeypatch.setattr(fn_run_batch.workspace, "repo_tree", lambda _: root)
     monkeypatch.setattr(fn_run_batch.workspace, "python_exe", lambda: "python")
+    # configure() rewrites the baseline cache dir to /tmp, which does not exist
+    # on a Windows test host and is irrelevant here anyway.
+    monkeypatch.setattr(fn_run_batch.workspace, "configure", lambda: None)
     return root
 
 
@@ -129,17 +132,17 @@ def test_generate_only_emits_candidates_on_covered_lines(env, fake_s3, tree):
 def test_generate_chunks_into_batches_of_fifteen(env, fake_s3, tree, monkeypatch):
     # 40 covered sites -> 15 + 15 + 10
     sites = [asdict(_site(lineno=i)) for i in range(40)]
-    monkeypatch.setattr(fn_generate, "find_candidates", lambda *a: [])
+    monkeypatch.setattr(fn_generate.ADAPTER, "find_candidates", lambda *a: [])
     baseline = _baseline({})
     fake_s3.put_json("b", "baseline.json", asdict(baseline))
 
     real_handler_sites = sites  # inject after candidate discovery
     monkeypatch.setattr(
-        fn_generate,
+        fn_generate.ADAPTER,
         "find_candidates",
         lambda source, rel: [MutationSite(**s) for s in real_handler_sites],
     )
-    monkeypatch.setattr(fn_generate, "apply", lambda source, site: source)
+    monkeypatch.setattr(fn_generate.ADAPTER, "apply", lambda source, site: source)
     baseline.line_to_tests = {f"pkg/mod.py:{i}": ["t"] for i in range(40)}
     fake_s3.put_json("b", "baseline.json", asdict(baseline))
 
@@ -208,7 +211,7 @@ def _run_result(**kwargs):
 def test_run_batch_keeps_a_caught_mutation_as_a_survivor(env, fake_s3, tree, monkeypatch):
     monkeypatch.setattr(
         fn_run_batch,
-        "run_mutation",
+        "run_mutation_with",
         lambda *a, **k: _run_result(failed=1, failing_tests=["tests/test_mod.py::test_compute"]),
     )
     event = _prepare_batch(fake_s3, [_site()])
@@ -222,7 +225,7 @@ def test_run_batch_keeps_a_caught_mutation_as_a_survivor(env, fake_s3, tree, mon
 
 def test_run_batch_classifies_an_uncaught_mutation_as_a_test_gap(env, fake_s3, tree, monkeypatch):
     monkeypatch.setattr(
-        fn_run_batch, "run_mutation", lambda *a, **k: _run_result(returncode=0, passed=1)
+        fn_run_batch, "run_mutation_with", lambda *a, **k: _run_result(returncode=0, passed=1)
     )
     event = _prepare_batch(fake_s3, [_site()])
 
@@ -241,7 +244,7 @@ def test_run_batch_writes_raw_results_before_it_raises(env, fake_s3, tree, monke
     after the raise, those test gaps would never reach fn_persist.
     """
     monkeypatch.setattr(
-        fn_run_batch, "run_mutation", lambda *a, **k: _run_result(returncode=0, passed=1)
+        fn_run_batch, "run_mutation_with", lambda *a, **k: _run_result(returncode=0, passed=1)
     )
     event = _prepare_batch(fake_s3, [_site(), _site(lineno=2, operator="ARITHMETIC")])
 
@@ -254,7 +257,7 @@ def test_run_batch_writes_raw_results_before_it_raises(env, fake_s3, tree, monke
 
 
 def test_run_batch_drops_a_timeout(env, fake_s3, tree, monkeypatch):
-    monkeypatch.setattr(fn_run_batch, "run_mutation", lambda *a, **k: _run_result(timed_out=True))
+    monkeypatch.setattr(fn_run_batch, "run_mutation_with", lambda *a, **k: _run_result(timed_out=True))
     event = _prepare_batch(fake_s3, [_site()])
 
     with pytest.raises(fn_run_batch.NoSurvivorsError):
@@ -267,7 +270,7 @@ def test_run_batch_drops_a_timeout(env, fake_s3, tree, monkeypatch):
 def test_run_batch_drops_a_collection_error(env, fake_s3, tree, monkeypatch):
     monkeypatch.setattr(
         fn_run_batch,
-        "run_mutation",
+        "run_mutation_with",
         lambda *a, **k: _run_result(errors=1, collection_error=True),
     )
     event = _prepare_batch(fake_s3, [_site()])
@@ -285,7 +288,7 @@ def test_run_batch_never_ships_survivor_bodies_through_the_state_machine(
     # The Map's aggregate output has a 256KB ceiling; survivors stay in S3.
     monkeypatch.setattr(
         fn_run_batch,
-        "run_mutation",
+        "run_mutation_with",
         lambda *a, **k: _run_result(failed=1, failing_tests=["tests/test_mod.py::test_compute"]),
     )
     event = _prepare_batch(fake_s3, [_site()])

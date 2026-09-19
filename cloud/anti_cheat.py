@@ -24,6 +24,10 @@ from pathlib import Path, PurePosixPath
 
 REJECT_REASON = "anti_cheat"
 
+# Extension a patch may touch, per language. Anything else is rejected at the
+# path stage, before the patch is applied to a tree.
+_SOURCE_SUFFIX = {"python": ".py", "go": ".go"}
+
 _EXIT_CALLS = {"sys.exit", "os._exit", "pytest.exit", "exit", "quit", "os.abort"}
 _SKIP_MARKS = {"skip", "skipif", "xfail"}
 
@@ -68,22 +72,34 @@ def is_test_path(path: str) -> bool:
     name = PurePosixPath(norm).name
     if {"tests", "test", "testing"} & set(parts):
         return True
+    # `_test.go` is Go's entire test convention, and `testdata` is a directory
+    # the Go toolchain refuses to build -- a patch "fixing" something in there
+    # has not fixed anything.
+    if "testdata" in parts or name.endswith("_test.go"):
+        return True
     return name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py"
 
 
-def check_paths(paths: list[str]) -> HygieneResult:
+def check_paths(paths: list[str], language: str = "python") -> HygieneResult:
     """Path-level rules, applied before the patch is allowed anywhere near the tree."""
     if not paths:
         return HygieneResult(False, REJECT_REASON, "patch does not target any file")
+    suffix = _SOURCE_SUFFIX.get(language.lower())
+    if suffix is None:
+        return HygieneResult(
+            False, REJECT_REASON, f"no patch rules are defined for language {language!r}"
+        )
     for path in paths:
         norm = _normalize(path)
         if norm.startswith("/") or norm.startswith("\\") or ".." in PurePosixPath(norm).parts:
             return HygieneResult(False, REJECT_REASON, f"patch targets a path outside the tree: {path}")
         if is_test_path(norm):
             return HygieneResult(False, REJECT_REASON, f"patch modifies a test file: {path}")
-        if not norm.endswith(".py"):
+        if not norm.endswith(suffix):
             return HygieneResult(
-                False, REJECT_REASON, f"patch modifies a non-Python file: {path}"
+                False,
+                REJECT_REASON,
+                f"patch modifies a file that is not {language} source: {path}",
             )
     return HygieneResult(True, touched_paths=[_normalize(p) for p in paths])
 
@@ -172,29 +188,89 @@ def compare(before: Fingerprint, after: Fingerprint) -> tuple[bool, str]:
     return True, ""
 
 
-def check_tree_diff(original_dir: Path, patched_dir: Path, touched_paths: list[str]) -> HygieneResult:
+@dataclass
+class GoFingerprint:
+    """Go's counterpart to Fingerprint. See the module docstring for why it is
+    shorter -- it is not an unfinished version of the Python one."""
+
+    exit_calls: int = 0
+    skip_calls: int = 0
+    build_ignores: int = 0
+
+
+def go_fingerprint(source: str, filename: str = "<patch>") -> GoFingerprint:
+    """Counts what the Go hygiene rules care about, via go/ast.
+
+    Raises SyntaxError if the source does not parse, so the caller's existing
+    "patch leaves the file unparseable" branch works unchanged across both
+    languages.
+    """
+    # Imported here rather than at module scope: fn_grade imports anti_cheat in
+    # every image, and the Python images have no Go toolchain to build the
+    # helper with. A Python repo must never pay for Go being supported.
+    from bugforge.languages.go import _call_locator
+
+    result = _call_locator("fingerprint", filename, source)
+    if result.get("error"):
+        raise SyntaxError(result["error"])
+    raw = result.get("fingerprint") or {}
+    return GoFingerprint(
+        exit_calls=raw.get("exit_calls", 0),
+        skip_calls=raw.get("skip_calls", 0),
+        build_ignores=raw.get("build_ignores", 0),
+    )
+
+
+def compare_go(before: GoFingerprint, after: GoFingerprint) -> tuple[bool, str]:
+    if after.exit_calls > before.exit_calls:
+        return False, "patch adds a process-exit call (os.Exit / syscall.Exit / log.Fatal)"
+    if after.skip_calls > before.skip_calls:
+        return False, "patch adds a test-skip call"
+    if after.build_ignores > before.build_ignores:
+        return False, "patch adds a //go:build constraint that could exclude the file"
+    return True, ""
+
+
+# Per language: how to fingerprint a file, how to compare two fingerprints,
+# and what an absent "before" file counts as.
+_RULES = {
+    "python": (fingerprint, compare, Fingerprint),
+    "go": (go_fingerprint, compare_go, GoFingerprint),
+}
+
+
+def check_tree_diff(
+    original_dir: Path, patched_dir: Path, touched_paths: list[str], language: str = "python"
+) -> HygieneResult:
     """Compares each touched file's before/after AST fingerprint.
 
     A file the patch creates has no "before", so it is compared against an
     empty fingerprint -- which still catches a brand-new module full of
     skip markers.
     """
+    rules = _RULES.get(language.lower())
+    if rules is None:
+        return HygieneResult(
+            False, REJECT_REASON, f"no patch rules are defined for language {language!r}"
+        )
+    take_fingerprint, compare_fingerprints, empty = rules
+
     for rel in touched_paths:
         after_path = patched_dir / rel
         if not after_path.exists():
             return HygieneResult(False, REJECT_REASON, f"patch deletes {rel}")
         try:
-            after_fp = fingerprint(after_path.read_text(encoding="utf-8"), rel)
+            after_fp = take_fingerprint(after_path.read_text(encoding="utf-8"), rel)
         except SyntaxError as e:
             return HygieneResult(False, REJECT_REASON, f"patch leaves {rel} unparseable: {e}")
 
         before_path = original_dir / rel
         if before_path.exists():
-            before_fp = fingerprint(before_path.read_text(encoding="utf-8"), rel)
+            before_fp = take_fingerprint(before_path.read_text(encoding="utf-8"), rel)
         else:
-            before_fp = Fingerprint()
+            before_fp = empty()
 
-        ok, detail = compare(before_fp, after_fp)
+        ok, detail = compare_fingerprints(before_fp, after_fp)
         if not ok:
             return HygieneResult(False, REJECT_REASON, f"{rel}: {detail}")
 
